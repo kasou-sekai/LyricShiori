@@ -255,33 +255,18 @@ final class LyricShioriStore {
     func adjustOffset(by delta: Int) {
         currentLyrics?.offsetMilliseconds += delta
         currentLyrics?.needsPersist = true
+        if let currentLyrics {
+            persistSharedLyrics(currentLyrics)
+        }
         updateCurrentLine()
     }
 
     func setOffset(_ offset: Int) {
         currentLyrics?.offsetMilliseconds = offset
         currentLyrics?.needsPersist = true
-        updateCurrentLine()
-    }
-
-    func adjustLine(id: LyricsLine.ID, by delta: TimeInterval) {
-        guard var lyrics = currentLyrics,
-              let index = lyrics.lines.firstIndex(where: { $0.id == id }) else {
-            return
+        if let currentLyrics {
+            persistSharedLyrics(currentLyrics)
         }
-        lyrics.lines[index].position = max(0, lyrics.lines[index].position + delta)
-        lyrics.lines[index].wordTimings = lyrics.lines[index].wordTimings.map { timing in
-            WordTiming(
-                id: timing.id,
-                start: max(0, timing.start + delta),
-                duration: timing.duration,
-                text: timing.text
-            )
-        }
-        lyrics.lines.sort { $0.position < $1.position }
-        lyrics.needsPersist = true
-        currentLyrics = lyrics
-        persistSharedLyrics(lyrics)
         updateCurrentLine()
     }
 

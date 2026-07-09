@@ -170,15 +170,17 @@ final class SharedLyricsCache: @unchecked Sendable {
 
     private func lines(from document: LyricsDocument) -> [Line] {
         document.lines.map { line in
-            Line(
-                time: line.position * 1000,
+            let sharedOffset = document.adjustedDelay
+            let shiftedPosition = max(0, line.position - sharedOffset)
+            return Line(
+                time: shiftedPosition * 1000,
                 text: line.content,
                 translation: line.translations["default"],
                 romanization: line.translations["romanization"],
                 furigana: line.translations["furigana"],
                 words: line.wordTimings.isEmpty ? nil : line.wordTimings.map {
                     Word(
-                        time: $0.start * 1000,
+                        time: max(0, $0.start - sharedOffset) * 1000,
                         duration: ($0.duration ?? 0) * 1000,
                         text: $0.text
                     )

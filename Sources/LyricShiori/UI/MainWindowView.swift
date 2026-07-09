@@ -221,21 +221,6 @@ private struct ScrollLyricsList: View {
                     .padding(.vertical, 5)
                 }
                 .buttonStyle(.plain)
-                .contextMenu {
-                    Button("Move Line Earlier 0.1s") {
-                        store.adjustLine(id: line.id, by: -0.1)
-                    }
-                    Button("Move Line Later 0.1s") {
-                        store.adjustLine(id: line.id, by: 0.1)
-                    }
-                    Divider()
-                    Button("Move Line Earlier 0.5s") {
-                        store.adjustLine(id: line.id, by: -0.5)
-                    }
-                    Button("Move Line Later 0.5s") {
-                        store.adjustLine(id: line.id, by: 0.5)
-                    }
-                }
                 .id(line.id)
                 .listRowBackground(index == store.currentLineIndex ? Color.accentColor.opacity(0.12) : Color.clear)
             }
