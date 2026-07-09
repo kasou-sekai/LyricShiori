@@ -89,6 +89,40 @@ struct LyricsDocument: Identifiable, Equatable {
         return output.joined(separator: "\n")
     }
 
+    var lrcx: String {
+        var output: [String] = []
+        if let title = metadata.title, !title.isEmpty {
+            output.append("[ti:\(title)]")
+        }
+        if let artist = metadata.artist, !artist.isEmpty {
+            output.append("[ar:\(artist)]")
+        }
+        if let album = metadata.album, !album.isEmpty {
+            output.append("[al:\(album)]")
+        }
+        if offsetMilliseconds != 0 {
+            output.append("[offset:\(offsetMilliseconds)]")
+        }
+
+        for line in lines {
+            let timestamp = Self.formatTimestamp(line.position)
+            output.append("[\(timestamp)]\(line.content)")
+            if !line.wordTimings.isEmpty {
+                let tags = line.wordTimings.enumerated().map { index, timing in
+                    let milliseconds = Int(max(0, timing.start - line.position) * 1000)
+                    return "<\(milliseconds),\(index)>"
+                }
+                .joined()
+                output.append("[\(timestamp)][tt]\(tags)")
+            }
+            for (language, translation) in line.translations.sorted(by: { $0.key < $1.key }) {
+                let tag = language == "default" ? "tr" : "tr:\(language)"
+                output.append("[\(timestamp)][\(tag)]\(translation)")
+            }
+        }
+        return output.joined(separator: "\n")
+    }
+
     func lineIndex(at playbackTime: TimeInterval) -> Int? {
         guard !lines.isEmpty else { return nil }
         let target = playbackTime + adjustedDelay

@@ -45,7 +45,7 @@ final class LyricsKitLyricsService: LyricsSearchService {
         return results
     }
 
-    private static func convert(_ lyrics: LyricsKit.Lyrics, providerID: LyricsProviderID) -> LyricsDocument? {
+    nonisolated static func convert(_ lyrics: LyricsKit.Lyrics, providerID: LyricsProviderID) -> LyricsDocument? {
         guard !lyrics.lines.isEmpty else {
             return nil
         }
@@ -82,7 +82,7 @@ final class LyricsKitLyricsService: LyricsSearchService {
         return document
     }
 
-    private static func wordTimings(from line: LyricsKit.LyricsLine) -> [WordTiming] {
+    private nonisolated static func wordTimings(from line: LyricsKit.LyricsLine) -> [WordTiming] {
         guard let timeTag = line.attachments.timetag else {
             return []
         }

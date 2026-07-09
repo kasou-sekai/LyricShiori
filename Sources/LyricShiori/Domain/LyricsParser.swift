@@ -14,13 +14,18 @@ enum LyricsParserError: LocalizedError {
 struct LyricsParser {
     private static let timestampPattern = #"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]"#
     private static let metadataPattern = #"^\[([a-zA-Z]+):(.*)\]$"#
+    private static let attachmentPattern = #"^\[([^\]]+)\](.*)$"#
+    private static let inlineTimeTagPattern = #"<(\d+),(\d+)>"#
+    private static let anyInlineTagPattern = #"<[^>]+>"#
 
     func parse(_ content: String, sourceName: String? = nil, localURL: URL? = nil) throws -> LyricsDocument {
         var metadata = LyricsMetadata(title: nil, artist: nil, album: nil, languageCode: nil, translationLanguages: [], request: nil)
         var offset = 0
         var lines: [LyricsLine] = []
+        var indexByPosition: [Int: Int] = [:]
         let timestampRegex = try NSRegularExpression(pattern: Self.timestampPattern)
         let metadataRegex = try NSRegularExpression(pattern: Self.metadataPattern)
+        let attachmentRegex = try NSRegularExpression(pattern: Self.attachmentPattern)
 
         for rawLine in content.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -36,9 +41,19 @@ struct LyricsParser {
             let lyricStart = timestampMatches.last?.range.location.advanced(by: timestampMatches.last?.range.length ?? 0) ?? 0
             let contentStart = String.Index(utf16Offset: lyricStart, in: line)
             let lyricContent = String(line[contentStart...])
+            let attachment = parseAttachment(lyricContent, regex: attachmentRegex)
             for match in timestampMatches {
                 if let position = parseTimestamp(match, in: line) {
-                    lines.append(.init(position: position, content: lyricContent, translations: [:], wordTimings: parseWordTimings(in: lyricContent, base: position)))
+                    if let attachment {
+                        attach(attachment, toLineAt: position, lines: &lines, indexByPosition: &indexByPosition)
+                    } else {
+                        let displayContent = stripInlineTags(from: lyricContent)
+                        upsertLine(
+                            .init(position: position, content: displayContent, translations: [:], wordTimings: parseWordTimings(in: lyricContent, base: position)),
+                            lines: &lines,
+                            indexByPosition: &indexByPosition
+                        )
+                    }
                 }
             }
         }
@@ -108,6 +123,59 @@ struct LyricsParser {
         return minutes * 60 + seconds + fraction
     }
 
+    private func parseAttachment(_ content: String, regex: NSRegularExpression) -> (tag: String, value: String)? {
+        let nsRange = NSRange(content.startIndex..<content.endIndex, in: content)
+        guard let match = regex.firstMatch(in: content, range: nsRange),
+              let tagRange = Range(match.range(at: 1), in: content),
+              let valueRange = Range(match.range(at: 2), in: content) else {
+            return nil
+        }
+        return (String(content[tagRange]), String(content[valueRange]))
+    }
+
+    private func attach(
+        _ attachment: (tag: String, value: String),
+        toLineAt position: TimeInterval,
+        lines: inout [LyricsLine],
+        indexByPosition: inout [Int: Int]
+    ) {
+        let key = positionKey(position)
+        let index: Int
+        if let existingIndex = indexByPosition[key] {
+            index = existingIndex
+        } else {
+            index = lines.endIndex
+            indexByPosition[key] = index
+            lines.append(.init(position: position, content: "", translations: [:], wordTimings: []))
+        }
+
+        if attachment.tag == "tt" {
+            lines[index].wordTimings = parseInlineTimeTags(attachment.value, base: position)
+        } else if attachment.tag == "tr" {
+            lines[index].translations["default"] = attachment.value
+        } else if attachment.tag.hasPrefix("tr:") {
+            let language = String(attachment.tag.dropFirst(3))
+            lines[index].translations[language.isEmpty ? "default" : language] = attachment.value
+        }
+    }
+
+    private func upsertLine(_ line: LyricsLine, lines: inout [LyricsLine], indexByPosition: inout [Int: Int]) {
+        let key = positionKey(line.position)
+        if let index = indexByPosition[key] {
+            lines[index].content = line.content
+            if lines[index].wordTimings.isEmpty {
+                lines[index].wordTimings = line.wordTimings
+            }
+        } else {
+            indexByPosition[key] = lines.endIndex
+            lines.append(line)
+        }
+    }
+
+    private func positionKey(_ position: TimeInterval) -> Int {
+        Int((position * 1000).rounded())
+    }
+
     private func parseWordTimings(in content: String, base: TimeInterval) -> [WordTiming] {
         guard content.contains("<") else { return [] }
         let pattern = #"<(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?>([^<]+)"#
@@ -120,6 +188,22 @@ struct LyricsParser {
             }
             return WordTiming(start: max(base, timing), duration: nil, text: String(content[textRange]))
         }
+    }
+
+    private func parseInlineTimeTags(_ content: String, base: TimeInterval) -> [WordTiming] {
+        guard let regex = try? NSRegularExpression(pattern: Self.inlineTimeTagPattern) else { return [] }
+        let nsRange = NSRange(content.startIndex..<content.endIndex, in: content)
+        return regex.matches(in: content, range: nsRange).compactMap { match in
+            guard let millisecondsRange = Range(match.range(at: 1), in: content),
+                  let milliseconds = Double(content[millisecondsRange]) else {
+                return nil
+            }
+            return WordTiming(start: base + milliseconds / 1000, duration: nil, text: "")
+        }
+    }
+
+    private func stripInlineTags(from content: String) -> String {
+        content.replacingOccurrences(of: Self.anyInlineTagPattern, with: "", options: .regularExpression)
     }
 }
 
@@ -137,4 +221,3 @@ enum LyricsLanguageRecognizer {
         return Locale.current.language.languageCode?.identifier
     }
 }
-

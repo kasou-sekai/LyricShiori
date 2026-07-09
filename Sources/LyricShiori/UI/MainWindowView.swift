@@ -41,7 +41,7 @@ struct MainWindowView: View {
                 store.importLyrics(from: url)
             }
         }
-        .fileExporter(isPresented: $exporting, document: LyricsFileDocument(text: store.currentLyrics?.legacyLRC ?? ""), contentType: .plainText, defaultFilename: defaultExportName) { _ in }
+        .fileExporter(isPresented: $exporting, document: LyricsFileDocument(text: store.currentLyrics?.lrcx ?? ""), contentType: .plainText, defaultFilename: defaultExportName) { _ in }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             importDroppedFile(from: providers)
         }
@@ -60,7 +60,7 @@ struct MainWindowView: View {
 
     private var defaultExportName: String {
         let title = store.playback.track?.title ?? "Lyrics"
-        return "\(title).lrc"
+        return "\(title).lrcx"
     }
 
     private func importDroppedFile(from providers: [NSItemProvider]) -> Bool {

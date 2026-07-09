@@ -1,4 +1,5 @@
 import Foundation
+import LyricsKit
 
 struct LocalLyricsStorage: LyricsStorageService {
     var parser = LyricsParser()
@@ -11,8 +12,8 @@ struct LocalLyricsStorage: LyricsStorageService {
             self.baseDirectory = baseDirectory
         } else {
             self.baseDirectory = FileManager.default.urls(for: .musicDirectory, in: .userDomainMask).first?
-                .appendingPathComponent("LyricsX", isDirectory: true)
-                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("LyricsX", isDirectory: true)
+                .appendingPathComponent(Defaults.defaultLyricsDirectoryName, isDirectory: true)
+                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(Defaults.defaultLyricsDirectoryName, isDirectory: true)
         }
     }
 
@@ -25,7 +26,11 @@ struct LocalLyricsStorage: LyricsStorageService {
         let fileName = "\(sanitize(track.title)) - \(sanitize(track.artist))"
         urls.append(baseDirectory.appendingPathComponent(fileName).appendingPathExtension("lrcx"))
         urls.append(baseDirectory.appendingPathComponent(fileName).appendingPathExtension("lrc"))
-        return urls
+        if let legacyDirectory {
+            urls.append(legacyDirectory.appendingPathComponent(fileName).appendingPathExtension("lrcx"))
+            urls.append(legacyDirectory.appendingPathComponent(fileName).appendingPathExtension("lrc"))
+        }
+        return unique(urls)
     }
 
     func loadLyrics(for track: TrackIdentity, includeBesideTrack: Bool) throws -> LyricsDocument? {
@@ -35,13 +40,13 @@ struct LocalLyricsStorage: LyricsStorageService {
         if includeBesideTrack,
            let embedded = track.embeddedLyrics,
            !embedded.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           let document = try? parser.parse(embedded, sourceName: "Embedded") {
+           let document = try? parseLyrics(embedded, sourceName: "Embedded", localURL: nil) {
             return attach(track: track, to: document)
         }
 
         for url in candidateURLs(for: track, includeBesideTrack: includeBesideTrack) where FileManager.default.fileExists(atPath: url.path) {
             let content = try String(contentsOf: url, encoding: .utf8)
-            if let document = try? parser.parse(content, sourceName: LyricsProviderID.local.rawValue, localURL: url) {
+            if let document = try? parseLyrics(content, sourceName: LyricsProviderID.local.rawValue, localURL: url) {
                 return attach(track: track, to: document)
             }
         }
@@ -56,19 +61,19 @@ struct LocalLyricsStorage: LyricsStorageService {
         let url = baseDirectory
             .appendingPathComponent("\(sanitize(track.title)) - \(sanitize(track.artist))")
             .appendingPathExtension("lrcx")
-        try document.legacyLRC.write(to: url, atomically: true, encoding: .utf8)
+        try document.lrcx.write(to: url, atomically: true, encoding: .utf8)
         return url
     }
 
     func importLyrics(from url: URL) throws -> LyricsDocument {
         let content = try String(contentsOf: url, encoding: .utf8)
-        var document = try parser.parse(content, sourceName: LyricsProviderID.local.rawValue, localURL: url)
+        var document = try parseLyrics(content, sourceName: LyricsProviderID.local.rawValue, localURL: url)
         document.needsPersist = true
         return document
     }
 
     func export(_ document: LyricsDocument, to url: URL) throws {
-        try document.legacyLRC.write(to: url, atomically: true, encoding: .utf8)
+        try document.lrcx.write(to: url, atomically: true, encoding: .utf8)
     }
 
     private func attach(track: TrackIdentity, to document: LyricsDocument) -> LyricsDocument {
@@ -85,10 +90,34 @@ struct LocalLyricsStorage: LyricsStorageService {
         return copy
     }
 
+    private func parseLyrics(_ content: String, sourceName: String?, localURL: URL?) throws -> LyricsDocument {
+        if let lyrics = LyricsKit.Lyrics(content),
+           var document = LyricsKitLyricsService.convert(lyrics, providerID: .local) {
+            document.sourceName = sourceName
+            document.localURL = localURL
+            return document
+        }
+        return try parser.parse(content, sourceName: sourceName, localURL: localURL)
+    }
+
     private func sanitize(_ value: String) -> String {
         value.replacingOccurrences(of: "/", with: ":")
             .replacingOccurrences(of: "\0", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var legacyDirectory: URL? {
+        let legacy = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Music/\(Defaults.legacyLyricsDirectoryName)", isDirectory: true)
+        guard legacy.standardizedFileURL != baseDirectory.standardizedFileURL else {
+            return nil
+        }
+        return legacy
+    }
+
+    private func unique(_ urls: [URL]) -> [URL] {
+        var seen: Set<String> = []
+        return urls.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 
     private func beginSecurityScopeIfNeeded() -> Bool {
