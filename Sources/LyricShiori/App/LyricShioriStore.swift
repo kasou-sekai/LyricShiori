@@ -17,7 +17,9 @@ final class LyricShioriStore {
     var showLyricsWindow = false
     var spotifyAccessMessage = "Not requested"
 
-    private let conversion: ChineseConversionService
+    @ObservationIgnored private let conversion: ChineseConversionService
+    @ObservationIgnored private let sharedLyricsCache: SharedLyricsCache
+    @ObservationIgnored private let sharedLyricsCacheServer: SharedLyricsCacheServer
     private var playerServices: [PlayerKind: MusicPlayerService]
     private var lyricsServices: [LyricsProviderID: LyricsSearchService]
     private var playerTask: Task<Void, Never>?
@@ -30,8 +32,11 @@ final class LyricShioriStore {
         settings: AppSettings = AppSettings(),
         conversion: ChineseConversionService = PassthroughChineseConversionService()
     ) {
+        let sharedLyricsCache = SharedLyricsCache()
         self.settings = settings
         self.conversion = conversion
+        self.sharedLyricsCache = sharedLyricsCache
+        self.sharedLyricsCacheServer = SharedLyricsCacheServer(cache: sharedLyricsCache)
         self.playerServices = [.spotify: SpotifyPlayerService()]
         self.lyricsServices = [
             .netease: LyricsKitLyricsService(providerID: .netease),
@@ -42,6 +47,7 @@ final class LyricShioriStore {
 
     func start() {
         installSpotifyPlaybackObserver()
+        sharedLyricsCacheServer.start()
         syncDesktopLyricsWindow()
         playerTask?.cancel()
         playerTask = Task { [weak self] in
@@ -55,6 +61,7 @@ final class LyricShioriStore {
     func stop() {
         playerTask?.cancel()
         searchTask?.cancel()
+        sharedLyricsCacheServer.stop()
         desktopLyricsWindowController?.hide()
         if let spotifyPlaybackObserver {
             DistributedNotificationCenter.default().removeObserver(spotifyPlaybackObserver)
@@ -102,6 +109,11 @@ final class LyricShioriStore {
         do {
             if let local = try localLyricsStorage().loadLyrics(for: track, includeBesideTrack: settings.loadLyricsBesideTrack) {
                 currentLyrics = settings.filter.apply(to: local)
+                updateCurrentLine()
+                return
+            }
+            if let shared = try sharedLyricsCache.loadDocument(for: track) {
+                currentLyrics = settings.filter.apply(to: shared)
                 updateCurrentLine()
                 return
             }
@@ -156,13 +168,14 @@ final class LyricShioriStore {
 
         let request = ShioriLyricsSearchRequest(title: cleanTitle, artist: cleanArtist, album: album, duration: duration, limit: 8)
         var collected: [LyricsSearchResult] = []
+        let matcher = LyricsCandidateMatcher(request: request)
         for providerID in orderedProviders() {
             guard !Task.isCancelled, isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) else { return }
             guard let service = lyricsServices[providerID] else { continue }
             do {
                 let results = try await service.search(request)
-                    .filter { !settings.strictSearchEnabled || $0.isMatched }
-                    .sorted { $0.quality > $1.quality }
+                    .compactMap { matcher.evaluate($0) }
+                    .sorted(by: matcher.sort)
                 guard !Task.isCancelled, isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) else { return }
                 collected.append(contentsOf: results)
                 searchResults = collected
@@ -194,6 +207,7 @@ final class LyricShioriStore {
         copy.sourceName = sourceName ?? copy.sourceName
         copy.needsPersist = true
         currentLyrics = copy
+        persistSharedLyrics(copy)
         updateCurrentLine()
     }
 
@@ -226,6 +240,7 @@ final class LyricShioriStore {
         }
         do {
             _ = try localLyricsStorage().save(document, for: track)
+            try sharedLyricsCache.save(document, for: track)
             currentLyrics?.needsPersist = false
         } catch {
             lastError = error.localizedDescription
@@ -426,6 +441,15 @@ final class LyricShioriStore {
     private func localLyricsStorage() -> LocalLyricsStorage {
         let path = settings.lyricsSavingPath
         return LocalLyricsStorage(baseDirectory: path.url, isSecurityScoped: path.securityScoped)
+    }
+
+    private func persistSharedLyrics(_ document: LyricsDocument) {
+        guard let track = playback.track else { return }
+        do {
+            try sharedLyricsCache.save(document, for: track)
+        } catch {
+            lastError = error.localizedDescription
+        }
     }
 
 }
