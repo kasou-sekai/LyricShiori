@@ -112,10 +112,15 @@ final class LyricShioriStore {
                 updateCurrentLine()
                 return
             }
-            if let shared = try sharedLyricsCache.loadDocument(for: track) {
+            if let shared = try sharedLyricsCache.loadDocument(for: track, kind: .enhanced)
+                ?? sharedLyricsCache.loadDocument(for: track, kind: .enhancedRelaxed) {
                 currentLyrics = settings.filter.apply(to: shared)
                 updateCurrentLine()
                 return
+            }
+            if let spotify = try sharedLyricsCache.loadDocument(for: track, kind: .spotify) {
+                currentLyrics = settings.filter.apply(to: spotify)
+                updateCurrentLine()
             }
         } catch {
             lastError = error.localizedDescription
@@ -168,7 +173,7 @@ final class LyricShioriStore {
 
         let request = ShioriLyricsSearchRequest(title: cleanTitle, artist: cleanArtist, album: album, duration: duration, limit: 8)
         var collected: [LyricsSearchResult] = []
-        let matcher = LyricsCandidateMatcher(request: request)
+        let matcher = LyricsCandidateMatcher(request: request, referenceDocument: spotifyReferenceDocument(matching: request))
         for providerID in orderedProviders() {
             guard !Task.isCancelled, isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) else { return }
             guard let service = lyricsServices[providerID] else { continue }
@@ -179,7 +184,7 @@ final class LyricShioriStore {
                 guard !Task.isCancelled, isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) else { return }
                 collected.append(contentsOf: results)
                 searchResults = collected
-                if acceptFirstResult, currentLyrics == nil, let first = results.first {
+                if acceptFirstResult, shouldAcceptAutomaticSearchResult, let first = results.first {
                     acceptLyrics(first.document, sourceName: first.provider.rawValue)
                 }
             } catch {
@@ -256,6 +261,27 @@ final class LyricShioriStore {
     func setOffset(_ offset: Int) {
         currentLyrics?.offsetMilliseconds = offset
         currentLyrics?.needsPersist = true
+        updateCurrentLine()
+    }
+
+    func adjustLine(id: LyricsLine.ID, by delta: TimeInterval) {
+        guard var lyrics = currentLyrics,
+              let index = lyrics.lines.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        lyrics.lines[index].position = max(0, lyrics.lines[index].position + delta)
+        lyrics.lines[index].wordTimings = lyrics.lines[index].wordTimings.map { timing in
+            WordTiming(
+                id: timing.id,
+                start: max(0, timing.start + delta),
+                duration: timing.duration,
+                text: timing.text
+            )
+        }
+        lyrics.lines.sort { $0.position < $1.position }
+        lyrics.needsPersist = true
+        currentLyrics = lyrics
+        persistSharedLyrics(lyrics)
         updateCurrentLine()
     }
 
@@ -450,6 +476,19 @@ final class LyricShioriStore {
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    private var shouldAcceptAutomaticSearchResult: Bool {
+        currentLyrics == nil || currentLyrics?.sourceName == "Spotify Shared Cache"
+    }
+
+    private func spotifyReferenceDocument(matching request: ShioriLyricsSearchRequest) -> LyricsDocument? {
+        guard let track = playback.track,
+              track.title.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(request.title) == .orderedSame,
+              track.artist.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(request.artist) == .orderedSame else {
+            return nil
+        }
+        return try? sharedLyricsCache.loadDocument(for: track, kind: .spotify)
     }
 
 }

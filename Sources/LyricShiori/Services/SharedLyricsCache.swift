@@ -57,12 +57,20 @@ final class SharedLyricsCache: @unchecked Sendable {
     func loadDocument(for track: TrackIdentity) throws -> LyricsDocument? {
         guard isSpotifyTrack(track.id) else { return nil }
         for kind in [Kind.enhanced, .enhancedRelaxed, .spotify] {
-            guard let entry = try entry(trackUri: track.id, kind: kind), !entry.lines.isEmpty else {
-                continue
+            if let document = try loadDocument(for: track, kind: kind) {
+                return document
             }
-            return document(from: entry, track: track)
         }
         return nil
+    }
+
+    func loadDocument(for track: TrackIdentity, kind: Kind) throws -> LyricsDocument? {
+        guard isSpotifyTrack(track.id),
+              let entry = try entry(trackUri: track.id, kind: kind),
+              !entry.lines.isEmpty else {
+            return nil
+        }
+        return document(from: entry, track: track)
     }
 
     func save(_ document: LyricsDocument, for track: TrackIdentity) throws {
@@ -152,7 +160,7 @@ final class SharedLyricsCache: @unchecked Sendable {
             ),
             lines: lines,
             offsetMilliseconds: 0,
-            sourceName: "Full-Screen Shared Cache",
+            sourceName: entry.kind == .spotify ? "Spotify Shared Cache" : "Full-Screen Shared Cache",
             localURL: url,
             needsPersist: false
         )

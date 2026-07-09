@@ -2,10 +2,13 @@ import Foundation
 
 struct LyricsCandidateMatcher {
     private let request: ShioriLyricsSearchRequest
+    private let referenceDocument: LyricsDocument?
     private let durationTolerance: TimeInterval = 12
+    private let firstLineTimeTolerance: TimeInterval = 2.5
 
-    init(request: ShioriLyricsSearchRequest) {
+    init(request: ShioriLyricsSearchRequest, referenceDocument: LyricsDocument? = nil) {
         self.request = request
+        self.referenceDocument = referenceDocument
     }
 
     func evaluate(_ result: LyricsSearchResult) -> LyricsSearchResult? {
@@ -13,6 +16,7 @@ struct LyricsCandidateMatcher {
         guard isDurationMatch(result.duration, request.duration) else { return nil }
         guard isArtistOrAlbumMatch(result) else { return nil }
         guard firstMeaningfulLine(in: result.document) != nil else { return nil }
+        guard isFirstLineMatch(result.document) else { return nil }
 
         var copy = result
         copy.quality = quality(for: result)
@@ -89,6 +93,30 @@ struct LyricsCandidateMatcher {
         document.lines.first { isMeaningfulLyric($0.content) }
     }
 
+    private func isFirstLineMatch(_ document: LyricsDocument) -> Bool {
+        guard let referenceDocument, hasSyncedLyrics(referenceDocument) else {
+            return true
+        }
+        guard let referenceFirst = firstReferenceLine(in: referenceDocument),
+              let candidateFirst = firstMeaningfulLine(in: document) else {
+            return false
+        }
+        guard abs(referenceFirst.position - candidateFirst.position) <= firstLineTimeTolerance else {
+            return false
+        }
+        return isCompatibleText(referenceFirst.content, candidateFirst.content)
+    }
+
+    private func hasSyncedLyrics(_ document: LyricsDocument) -> Bool {
+        document.lines.contains { $0.position > 0 }
+    }
+
+    private func firstReferenceLine(in document: LyricsDocument) -> LyricsLine? {
+        document.lines.first {
+            normalizeLyricText($0.content).count >= 2 && $0.position >= 0
+        }
+    }
+
     private func isMeaningfulLyric(_ text: String) -> Bool {
         let normalized = normalizeLyricText(text)
         guard normalized.count >= 2 else { return false }
@@ -101,6 +129,18 @@ struct LyricsCandidateMatcher {
         let first = normalizeLyricText(lhs)
         let second = normalizeLyricText(rhs)
         return !first.isEmpty && !second.isEmpty && (first.contains(second) || second.contains(first))
+    }
+
+    private func isCompatibleText(_ lhs: String, _ rhs: String) -> Bool {
+        let first = normalizeLyricText(lhs)
+        let second = normalizeLyricText(rhs)
+        guard !first.isEmpty, !second.isEmpty else { return false }
+        if first == second { return true }
+        let minLength = min(first.count, second.count)
+        guard minLength >= 3 else { return false }
+        let longer = max(first.count, second.count)
+        guard Double(minLength) >= Double(min(8, longer)) * 0.45 else { return false }
+        return first.contains(second) || second.contains(first)
     }
 
     private func normalizeBaseTitle(_ text: String) -> String {
