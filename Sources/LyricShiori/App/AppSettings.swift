@@ -10,10 +10,12 @@ final class AppSettings {
 
     var desktopLyricsEnabled: Bool = true { didSet { save(desktopLyricsEnabled, Keys.desktopLyricsEnabled) } }
     var desktopLyricsEnableFurigana: Bool = false { didSet { save(desktopLyricsEnableFurigana, Keys.desktopLyricsEnableFurigana) } }
-    var desktopLyricsFontName: String = "Optima-Regular" { didSet { save(desktopLyricsFontName, Keys.desktopLyricsFontName) } }
+    var desktopLyricsFontName: String = "" { didSet { save(desktopLyricsFontName, Keys.desktopLyricsFontName) } }
     var desktopLyricsFontSize: Double = 24 { didSet { save(desktopLyricsFontSize, Keys.desktopLyricsFontSize) } }
     var desktopLyricsInsetBottom: Double = 20
     var desktopLyricsInsetBottomEnabled: Bool = true
+    var desktopLyricsPreviousLineCount: Int = 0 { didSet { save(desktopLyricsPreviousLineCount, Keys.desktopLyricsPreviousLineCount) } }
+    var desktopLyricsNextLineCount: Int = 1 { didSet { save(desktopLyricsNextLineCount, Keys.desktopLyricsNextLineCount) } }
     var desktopLyricsXPositionFactor: Double = 0.5 { didSet { save(desktopLyricsXPositionFactor, Keys.desktopLyricsXPositionFactor) } }
     var desktopLyricsYPositionFactor: Double = 0.9 { didSet { save(desktopLyricsYPositionFactor, Keys.desktopLyricsYPositionFactor) } }
     var desktopLyricsColor: Color = .white { didSet { saveColor(desktopLyricsColor, Keys.desktopLyricsColor) } }
@@ -101,6 +103,8 @@ final class AppSettings {
         desktopLyricsEnableFurigana = bool(Keys.desktopLyricsEnableFurigana, default: desktopLyricsEnableFurigana)
         desktopLyricsFontName = string(Keys.desktopLyricsFontName, default: desktopLyricsFontName)
         desktopLyricsFontSize = double(Keys.desktopLyricsFontSize, default: desktopLyricsFontSize)
+        desktopLyricsPreviousLineCount = min(max(integer(Keys.desktopLyricsPreviousLineCount, default: desktopLyricsPreviousLineCount), 0), 3)
+        desktopLyricsNextLineCount = min(max(integer(Keys.desktopLyricsNextLineCount, default: desktopLyricsNextLineCount), 0), 3)
         desktopLyricsXPositionFactor = double(Keys.desktopLyricsXPositionFactor, default: desktopLyricsXPositionFactor)
         desktopLyricsYPositionFactor = double(Keys.desktopLyricsYPositionFactor, default: desktopLyricsYPositionFactor)
         desktopLyricsColor = color(Keys.desktopLyricsColor, default: desktopLyricsColor)
@@ -252,6 +256,8 @@ private enum Keys {
     static let desktopLyricsEnableFurigana = "DesktopLyricsEnableFurigana"
     static let desktopLyricsFontName = "DesktopLyricsFontName"
     static let desktopLyricsFontSize = "DesktopLyricsFontSize"
+    static let desktopLyricsPreviousLineCount = "DesktopLyricsPreviousLineCount"
+    static let desktopLyricsNextLineCount = "DesktopLyricsNextLineCount"
     static let desktopLyricsXPositionFactor = "DesktopLyricsXPositionFactor"
     static let desktopLyricsYPositionFactor = "DesktopLyricsYPositionFactor"
     static let desktopLyricsColor = "DesktopLyricsColor"

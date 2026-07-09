@@ -43,7 +43,7 @@ final class SharedLyricsCache: @unchecked Sendable {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    private let cacheVersion = 5
+    private let cacheVersion = 6
     private let readyTTL: Int64 = 14 * 24 * 60 * 60 * 1000
     private let emptyTTL: Int64 = 30 * 60 * 1000
     private let maxEntries = 80
@@ -51,7 +51,7 @@ final class SharedLyricsCache: @unchecked Sendable {
     init(url: URL? = nil) {
         self.url = url ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Music/\(Defaults.defaultLyricsDirectoryName)", isDirectory: true)
-            .appendingPathComponent("full-screen-lyrics-cache-v5.json")
+            .appendingPathComponent("full-screen-lyrics-cache-v6.json")
     }
 
     func loadDocument(for track: TrackIdentity) throws -> LyricsDocument? {
@@ -76,6 +76,7 @@ final class SharedLyricsCache: @unchecked Sendable {
     func save(_ document: LyricsDocument, for track: TrackIdentity) throws {
         guard isSpotifyTrack(track.id) else { return }
         let lines = lines(from: document)
+        guard !lines.isEmpty else { return }
         let now = nowMilliseconds()
         for kind in [Kind.enhanced, .enhancedRelaxed] {
             try save(
@@ -83,7 +84,7 @@ final class SharedLyricsCache: @unchecked Sendable {
                     kind: kind,
                     trackUri: track.id,
                     cachedAt: now,
-                    expiresAt: now + (lines.isEmpty ? emptyTTL : readyTTL),
+                    expiresAt: now + readyTTL,
                     lines: lines,
                     debug: nil
                 )
@@ -169,12 +170,14 @@ final class SharedLyricsCache: @unchecked Sendable {
     }
 
     private func lines(from document: LyricsDocument) -> [Line] {
-        document.lines.map { line in
+        document.lines.compactMap { line in
+            let content = line.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !content.isEmpty else { return nil }
             let sharedOffset = document.adjustedDelay
             let shiftedPosition = max(0, line.position - sharedOffset)
             return Line(
                 time: shiftedPosition * 1000,
-                text: line.content,
+                text: content,
                 translation: line.translations["default"],
                 romanization: line.translations["romanization"],
                 furigana: line.translations["furigana"],

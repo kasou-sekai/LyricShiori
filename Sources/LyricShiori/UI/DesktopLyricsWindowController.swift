@@ -46,10 +46,9 @@ final class DesktopLyricsWindowController {
         let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first
         let screenFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
         let fontSize = store.settings.desktopLyricsFontSize
-        let hasSecondLine = !store.desktopLyricsLines().second.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let lineCount = max(1, store.desktopLyricsDisplayLines().count)
         let width = min(max(620, fontSize * 24), max(320, screenFrame.width - 48))
-        let lineCountFactor = hasSecondLine ? 3.35 : 2.35
-        let height = min(max(92, fontSize * lineCountFactor), max(92, screenFrame.height * 0.28))
+        let height = min(max(72, fontSize * (1.85 + Double(lineCount - 1) * 0.98)), max(92, screenFrame.height * 0.36))
         let x = screenFrame.minX + screenFrame.width * store.settings.desktopLyricsXPositionFactor - width / 2
         let y = screenFrame.minY + screenFrame.height * (1 - store.settings.desktopLyricsYPositionFactor) - height / 2
         let clampedX = x.clamped(to: screenFrame.minX ... max(screenFrame.minX, screenFrame.maxX - width))

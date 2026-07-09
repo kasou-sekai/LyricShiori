@@ -58,9 +58,13 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
             set artistName to artist of current track
             set albumName to album of current track
             set trackID to spotify url of current track
+            set artworkURL to ""
+            try
+                set artworkURL to artwork url of current track
+            end try
             set durationMS to duration of current track
             set positionSeconds to player position
-            return (player state as string) & linefeed & trackID & linefeed & trackName & linefeed & artistName & linefeed & albumName & linefeed & durationMS & linefeed & positionSeconds
+            return (player state as string) & linefeed & trackID & linefeed & trackName & linefeed & artistName & linefeed & albumName & linefeed & durationMS & linefeed & positionSeconds & linefeed & artworkURL
         end tell
         """
 
@@ -79,6 +83,7 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
             artist: lines[3],
             album: lines[4].isEmpty ? nil : lines[4],
             duration: duration > 0 ? duration : nil,
+            albumArtworkURL: lines.indices.contains(7) && !lines[7].isEmpty ? lines[7] : nil,
             localFileURL: nil,
             embeddedLyrics: nil
         )

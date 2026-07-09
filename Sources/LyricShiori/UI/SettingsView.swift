@@ -74,7 +74,6 @@ private struct DisplaySettingsView: View {
         Form {
             Section("Desktop Lyrics") {
                 Toggle("Enabled", isOn: $store.settings.desktopLyricsEnabled)
-                TextField("Font Name", text: $store.settings.desktopLyricsFontName)
                 Slider(value: $store.settings.desktopLyricsFontSize, in: 12...72, step: 1) {
                     Text("Font Size")
                 } minimumValueLabel: {
@@ -85,8 +84,8 @@ private struct DisplaySettingsView: View {
                 ColorPicker("Text Color", selection: $store.settings.desktopLyricsColor)
                 ColorPicker("Progress Color", selection: $store.settings.desktopLyricsProgressColor)
                 ColorPicker("Shadow Color", selection: $store.settings.desktopLyricsShadowColor)
-                ColorPicker("Background Color", selection: $store.settings.desktopLyricsBackgroundColor)
-                Toggle("One line mode", isOn: $store.settings.desktopLyricsOneLineMode)
+                Stepper("Previous lines: \(store.settings.desktopLyricsPreviousLineCount)", value: $store.settings.desktopLyricsPreviousLineCount, in: 0...3)
+                Stepper("Next lines: \(store.settings.desktopLyricsNextLineCount)", value: $store.settings.desktopLyricsNextLineCount, in: 0...3)
                 Toggle("Draggable", isOn: $store.settings.desktopLyricsDraggable)
                 Toggle("Hide lyrics when mouse passes by", isOn: $store.settings.hideLyricsWhenMousePassingBy)
                 Toggle("Disable lyrics during screenshots", isOn: $store.settings.disableLyricsWhenScreenShot)

@@ -6,6 +6,7 @@ struct TrackIdentity: Identifiable, Equatable, Codable, Hashable {
     var artist: String
     var album: String?
     var duration: TimeInterval?
+    var albumArtworkURL: String?
     var localFileURL: URL?
     var embeddedLyrics: String?
 
@@ -15,6 +16,7 @@ struct TrackIdentity: Identifiable, Equatable, Codable, Hashable {
         artist: "Lyric Shiori",
         album: nil,
         duration: nil,
+        albumArtworkURL: nil,
         localFileURL: nil,
         embeddedLyrics: nil
     )
@@ -25,6 +27,7 @@ struct TrackIdentity: Identifiable, Equatable, Codable, Hashable {
             title,
             artist,
             album ?? "",
+            albumArtworkURL ?? "",
             duration.map { String(Int($0.rounded())) } ?? "",
         ]
         .joined(separator: "\u{1f}")

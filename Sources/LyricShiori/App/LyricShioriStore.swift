@@ -1,6 +1,24 @@
 import AppKit
 import Foundation
 import Observation
+import SwiftUI
+
+struct DesktopLyricsDisplayLine: Identifiable, Equatable {
+    var id: String
+    var lineID: LyricsLine.ID
+    var text: String
+    var isActive: Bool
+    var distanceFromActive: Int
+    var progress: Double
+}
+
+struct DesktopLyricsPalette: Equatable {
+    var pending: Color
+    var played: Color
+    var active: Color
+    var secondary: Color
+    var shadow: Color
+}
 
 @MainActor
 @Observable
@@ -359,26 +377,29 @@ final class LyricShioriStore {
             .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
-    func desktopLyricsLines() -> (first: String, second: String) {
+    func desktopLyricsDisplayLines() -> [DesktopLyricsDisplayLine] {
         guard shouldDisplayLyrics,
               let lyrics = currentLyrics,
               let index = currentLineIndex,
               lyrics.lines.indices.contains(index) else {
-            return ("", "")
+            return []
         }
 
-        let line = lyrics.lines[index]
-        let firstLine = originalLineText(for: line)
-        var secondLine = ""
-        if !settings.desktopLyricsOneLineMode {
-            if settings.preferBilingualLyrics,
-               let translation = preferredTranslation(for: line) {
-                secondLine = converted(translation)
-            } else if let next = lyrics.lines[(index + 1)...].first(where: { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
-                secondLine = originalLineText(for: next)
-            }
+        let lowerBound = max(lyrics.lines.startIndex, index - settings.desktopLyricsPreviousLineCount)
+        let upperBound = min(lyrics.lines.index(before: lyrics.lines.endIndex), index + settings.desktopLyricsNextLineCount)
+        return (lowerBound...upperBound).compactMap { lineIndex in
+            let line = lyrics.lines[lineIndex]
+            let text = originalLineText(for: line).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            return DesktopLyricsDisplayLine(
+                id: "\(line.id.uuidString)-\(lineIndex)",
+                lineID: line.id,
+                text: text,
+                isActive: lineIndex == index,
+                distanceFromActive: lineIndex - index,
+                progress: lineIndex == index ? currentLineProgress() : (lineIndex < index ? 1 : 0)
+            )
         }
-        return (firstLine, secondLine)
     }
 
     func currentLineProgress() -> Double {
@@ -397,6 +418,28 @@ final class LyricShioriStore {
         return min(max((current - start) / (end - start), 0), 1)
     }
 
+    func desktopLyricsPalette() -> DesktopLyricsPalette {
+        guard let key = playback.track?.albumArtworkURL, !key.isEmpty else {
+            return DesktopLyricsPalette(
+                pending: settings.desktopLyricsColor.opacity(0.42),
+                played: settings.desktopLyricsProgressColor,
+                active: settings.desktopLyricsColor,
+                secondary: settings.desktopLyricsColor.opacity(0.70),
+                shadow: settings.desktopLyricsShadowColor
+            )
+        }
+
+        let palettes: [DesktopLyricsPalette] = [
+            .init(pending: Color(red: 0.53, green: 0.63, blue: 0.70), played: Color(red: 0.92, green: 0.97, blue: 1.00), active: Color(red: 0.80, green: 0.91, blue: 0.98), secondary: Color(red: 0.62, green: 0.73, blue: 0.80), shadow: Color(red: 0.08, green: 0.16, blue: 0.20)),
+            .init(pending: Color(red: 0.63, green: 0.57, blue: 0.70), played: Color(red: 0.98, green: 0.93, blue: 1.00), active: Color(red: 0.90, green: 0.82, blue: 0.96), secondary: Color(red: 0.72, green: 0.65, blue: 0.80), shadow: Color(red: 0.17, green: 0.10, blue: 0.22)),
+            .init(pending: Color(red: 0.58, green: 0.66, blue: 0.56), played: Color(red: 0.94, green: 1.00, blue: 0.88), active: Color(red: 0.79, green: 0.91, blue: 0.73), secondary: Color(red: 0.68, green: 0.77, blue: 0.64), shadow: Color(red: 0.10, green: 0.18, blue: 0.10)),
+            .init(pending: Color(red: 0.70, green: 0.59, blue: 0.52), played: Color(red: 1.00, green: 0.94, blue: 0.88), active: Color(red: 0.96, green: 0.78, blue: 0.66), secondary: Color(red: 0.78, green: 0.66, blue: 0.58), shadow: Color(red: 0.22, green: 0.12, blue: 0.08)),
+            .init(pending: Color(red: 0.55, green: 0.63, blue: 0.76), played: Color(red: 0.90, green: 0.95, blue: 1.00), active: Color(red: 0.69, green: 0.81, blue: 0.98), secondary: Color(red: 0.63, green: 0.71, blue: 0.84), shadow: Color(red: 0.07, green: 0.12, blue: 0.24)),
+            .init(pending: Color(red: 0.70, green: 0.56, blue: 0.61), played: Color(red: 1.00, green: 0.91, blue: 0.94), active: Color(red: 0.96, green: 0.72, blue: 0.80), secondary: Color(red: 0.78, green: 0.63, blue: 0.68), shadow: Color(red: 0.22, green: 0.08, blue: 0.14)),
+        ]
+        return palettes[stablePaletteIndex(for: key, count: palettes.count)]
+    }
+
     func syncDesktopLyricsWindow() {
         guard settings.desktopLyricsEnabled else {
             desktopLyricsWindowController?.hide()
@@ -408,8 +451,7 @@ final class LyricShioriStore {
         }
 
         desktopLyricsWindowController?.update()
-        let lines = desktopLyricsLines()
-        if lines.first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if desktopLyricsDisplayLines().isEmpty {
             desktopLyricsWindowController?.hide()
         } else {
             desktopLyricsWindowController?.show()
@@ -434,6 +476,15 @@ final class LyricShioriStore {
 
     var shouldDisplayLyrics: Bool {
         !(settings.disableLyricsWhenPaused && playback.status == .paused)
+    }
+
+    private func stablePaletteIndex(for key: String, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        var hash = 5381
+        for scalar in key.unicodeScalars {
+            hash = ((hash << 5) &+ hash) &+ Int(scalar.value)
+        }
+        return abs(hash) % count
     }
 
     private func orderedProviders() -> [LyricsProviderID] {
