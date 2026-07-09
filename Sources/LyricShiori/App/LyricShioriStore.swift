@@ -107,11 +107,6 @@ final class LyricShioriStore {
         guard !settings.noSearchingTrackIDs.contains(track.id) else { return }
 
         do {
-            if let local = try localLyricsStorage().loadLyrics(for: track, includeBesideTrack: settings.loadLyricsBesideTrack) {
-                currentLyrics = settings.filter.apply(to: local)
-                updateCurrentLine()
-                return
-            }
             if let shared = try sharedLyricsCache.loadDocument(for: track, kind: .enhanced)
                 ?? sharedLyricsCache.loadDocument(for: track, kind: .enhancedRelaxed) {
                 currentLyrics = settings.filter.apply(to: shared)
@@ -120,6 +115,9 @@ final class LyricShioriStore {
             }
             if let spotify = try sharedLyricsCache.loadDocument(for: track, kind: .spotify) {
                 currentLyrics = settings.filter.apply(to: spotify)
+                updateCurrentLine()
+            } else if let local = try localLyricsStorage().loadLyrics(for: track, includeBesideTrack: settings.loadLyricsBesideTrack) {
+                currentLyrics = settings.filter.apply(to: local)
                 updateCurrentLine()
             }
         } catch {
@@ -464,7 +462,9 @@ final class LyricShioriStore {
     }
 
     private var shouldAcceptAutomaticSearchResult: Bool {
-        currentLyrics == nil || currentLyrics?.sourceName == "Spotify Shared Cache"
+        currentLyrics == nil
+            || currentLyrics?.sourceName == "Spotify Shared Cache"
+            || currentLyrics?.sourceName == LyricsProviderID.local.rawValue
     }
 
     private func spotifyReferenceDocument(matching request: ShioriLyricsSearchRequest) -> LyricsDocument? {
