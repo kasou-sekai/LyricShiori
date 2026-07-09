@@ -127,6 +127,10 @@ private struct SourceSettingsView: View {
             Stepper("Priority window: \(Int(store.settings.lyricsPriorityWindow)) s", value: $store.settings.lyricsPriorityWindow, in: 0...30, step: 1)
             Toggle("Strict search matching", isOn: $store.settings.strictSearchEnabled)
             Toggle("Prefer bilingual lyrics", isOn: $store.settings.preferBilingualLyrics)
+            Toggle("Connect Full-Screen Playing", isOn: Binding(
+                get: { store.settings.connectFullScreenPlaying },
+                set: { store.setFullScreenPlayingConnectionEnabled($0) }
+            ))
 
             Section("Enabled Sources") {
                 ForEach([LyricsProviderID.netease, .qqMusic]) { provider in

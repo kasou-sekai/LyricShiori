@@ -42,6 +42,7 @@ final class AppSettings {
     var lyricsPriorityWindow: Double = 5 { didSet { save(lyricsPriorityWindow, Keys.lyricsPriorityWindow) } }
     var strictSearchEnabled: Bool = false { didSet { save(strictSearchEnabled, Keys.strictSearchEnabled) } }
     var preferBilingualLyrics: Bool = Locale.preferredLanguages.first?.hasPrefix("zh") == true { didSet { save(preferBilingualLyrics, Keys.preferBilingualLyrics) } }
+    var connectFullScreenPlaying: Bool = true { didSet { save(connectFullScreenPlaying, Keys.connectFullScreenPlaying) } }
 
     var loadLyricsBesideTrack: Bool = true { didSet { save(loadLyricsBesideTrack, Keys.loadLyricsBesideTrack) } }
     var useCustomLyricsSavingPath: Bool = false { didSet { save(useCustomLyricsSavingPath ? 1 : 0, Keys.lyricsSavingPathPopUpIndex) } }
@@ -125,6 +126,7 @@ final class AppSettings {
         lyricsPriorityWindow = double(Keys.lyricsPriorityWindow, default: lyricsPriorityWindow)
         strictSearchEnabled = bool(Keys.strictSearchEnabled, default: strictSearchEnabled)
         preferBilingualLyrics = bool(Keys.preferBilingualLyrics, default: preferBilingualLyrics)
+        connectFullScreenPlaying = bool(Keys.connectFullScreenPlaying, default: connectFullScreenPlaying)
 
         loadLyricsBesideTrack = bool(Keys.loadLyricsBesideTrack, default: loadLyricsBesideTrack)
         useCustomLyricsSavingPath = integer(Keys.lyricsSavingPathPopUpIndex, default: useCustomLyricsSavingPath ? 1 : 0) != 0
@@ -275,6 +277,7 @@ private enum Keys {
     static let lyricsPriorityWindow = "LyricsPriorityWindow"
     static let strictSearchEnabled = "StrictSearchEnabled"
     static let preferBilingualLyrics = "PreferBilingualLyrics"
+    static let connectFullScreenPlaying = "ConnectFullScreenPlaying"
 
     static let loadLyricsBesideTrack = "LoadLyricsBesideTrack"
     static let lyricsSavingPathPopUpIndex = "LyricsSavingPathPopUpIndex"

@@ -47,7 +47,7 @@ final class LyricShioriStore {
 
     func start() {
         installSpotifyPlaybackObserver()
-        sharedLyricsCacheServer.start()
+        syncFullScreenPlayingConnection()
         syncDesktopLyricsWindow()
         playerTask?.cancel()
         playerTask = Task { [weak self] in
@@ -107,15 +107,20 @@ final class LyricShioriStore {
         guard !settings.noSearchingTrackIDs.contains(track.id) else { return }
 
         do {
-            if let shared = try sharedLyricsCache.loadDocument(for: track, kind: .enhanced)
-                ?? sharedLyricsCache.loadDocument(for: track, kind: .enhancedRelaxed) {
-                currentLyrics = settings.filter.apply(to: shared)
-                updateCurrentLine()
-                return
-            }
-            if let spotify = try sharedLyricsCache.loadDocument(for: track, kind: .spotify) {
-                currentLyrics = settings.filter.apply(to: spotify)
-                updateCurrentLine()
+            if settings.connectFullScreenPlaying {
+                if let shared = try sharedLyricsCache.loadDocument(for: track, kind: .enhanced)
+                    ?? sharedLyricsCache.loadDocument(for: track, kind: .enhancedRelaxed) {
+                    currentLyrics = settings.filter.apply(to: shared)
+                    updateCurrentLine()
+                    return
+                }
+                if let spotify = try sharedLyricsCache.loadDocument(for: track, kind: .spotify) {
+                    currentLyrics = settings.filter.apply(to: spotify)
+                    updateCurrentLine()
+                } else if let local = try localLyricsStorage().loadLyrics(for: track, includeBesideTrack: settings.loadLyricsBesideTrack) {
+                    currentLyrics = settings.filter.apply(to: local)
+                    updateCurrentLine()
+                }
             } else if let local = try localLyricsStorage().loadLyrics(for: track, includeBesideTrack: settings.loadLyricsBesideTrack) {
                 currentLyrics = settings.filter.apply(to: local)
                 updateCurrentLine()
@@ -452,8 +457,23 @@ final class LyricShioriStore {
         return LocalLyricsStorage(baseDirectory: path.url, isSecurityScoped: path.securityScoped)
     }
 
+    func setFullScreenPlayingConnectionEnabled(_ enabled: Bool) {
+        settings.connectFullScreenPlaying = enabled
+        syncFullScreenPlayingConnection()
+        Task { await currentTrackChanged() }
+    }
+
+    private func syncFullScreenPlayingConnection() {
+        if settings.connectFullScreenPlaying {
+            sharedLyricsCacheServer.start()
+        } else {
+            sharedLyricsCacheServer.stop()
+        }
+    }
+
     private func persistSharedLyrics(_ document: LyricsDocument) {
-        guard let track = playback.track else { return }
+        guard settings.connectFullScreenPlaying,
+              let track = playback.track else { return }
         do {
             try sharedLyricsCache.save(document, for: track)
         } catch {
@@ -468,7 +488,8 @@ final class LyricShioriStore {
     }
 
     private func spotifyReferenceDocument(matching request: ShioriLyricsSearchRequest) -> LyricsDocument? {
-        guard let track = playback.track,
+        guard settings.connectFullScreenPlaying,
+              let track = playback.track,
               track.title.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(request.title) == .orderedSame,
               track.artist.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(request.artist) == .orderedSame else {
             return nil
