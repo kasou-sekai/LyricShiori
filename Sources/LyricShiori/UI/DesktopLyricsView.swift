@@ -112,6 +112,8 @@ private struct DesktopLyricText: View {
         } else {
             PlainDesktopLyricText(
                 text: line.text,
+                lineStart: line.lineStart,
+                lineEnd: line.lineEnd,
                 textColor: line.isActive ? playedColor : pendingColor,
                 shadowColor: shadowColor,
                 fontSize: fontSize,
@@ -146,7 +148,11 @@ private struct ProgressiveDesktopLyricText: View {
     var body: some View {
         HorizontalScrollingLine(
             alignment: alignment,
-            progress: scrollProgress,
+            strategy: .timed(
+                progress: scrollProgress,
+                textUnitCount: DesktopKaraokeWord.displayUnitCount(in: text),
+                lineDuration: nil
+            ),
             height: max(fontSize * 1.35, 24)
         ) {
             lyricText
@@ -177,6 +183,8 @@ private struct ProgressiveDesktopLyricText: View {
 
 private struct PlainDesktopLyricText: View {
     var text: String
+    var lineStart: TimeInterval
+    var lineEnd: TimeInterval?
     var textColor: Color
     var shadowColor: Color
     var fontSize: Double
@@ -187,7 +195,11 @@ private struct PlainDesktopLyricText: View {
     var body: some View {
         HorizontalScrollingLine(
             alignment: alignment,
-            progress: scrollProgress,
+            strategy: .timed(
+                progress: scrollProgress,
+                textUnitCount: DesktopKaraokeWord.displayUnitCount(in: text),
+                lineDuration: lineEnd.map { max(0, $0 - lineStart) }
+            ),
             height: max(fontSize * 1.35, 24)
         ) {
             Text(text)
@@ -211,11 +223,13 @@ private struct KaraokeDesktopLyricText: View {
     var fontWeight: Font.Weight
     var alignment: DesktopLyricsAlignment
     var scrollProgress: Double
+    @State private var wordFrames: [Int: CGRect] = [:]
+    @State private var coordinateSpaceName = UUID()
 
     var body: some View {
         HorizontalScrollingLine(
             alignment: alignment,
-            progress: scrollProgress,
+            strategy: .centerOn(targetX: highlightedTargetX),
             height: max(fontSize * 1.35, 24)
         ) {
             HStack(alignment: .firstTextBaseline, spacing: 0) {
@@ -229,16 +243,58 @@ private struct KaraokeDesktopLyricText: View {
                         fontSize: fontSize,
                         fontWeight: fontWeight
                     )
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: KaraokeWordFramePreferenceKey.self,
+                                value: [word.id: proxy.frame(in: .named(coordinateSpaceName))]
+                            )
+                        }
+                    )
                 }
             }
             .fixedSize(horizontal: true, vertical: false)
+            .coordinateSpace(name: coordinateSpaceName)
         }
+        .onPreferenceChange(KaraokeWordFramePreferenceKey.self) { wordFrames = $0 }
+    }
+
+    private var highlightedTargetX: CGFloat? {
+        guard let activeIndex = activeWordIndex,
+              let frame = wordFrames[words[activeIndex].id] else {
+            return nil
+        }
+
+        let progress = words[activeIndex].progress(at: playbackTime)
+        guard activeIndex + 1 < words.count,
+              let nextFrame = wordFrames[words[activeIndex + 1].id] else {
+            return frame.midX
+        }
+
+        let transition = smooth(min(max((progress - 0.65) / 0.35, 0), 1))
+        return frame.midX + (nextFrame.midX - frame.midX) * CGFloat(transition)
+    }
+
+    private var activeWordIndex: Int? {
+        if let index = words.firstIndex(where: { word in
+            playbackTime >= word.start && playbackTime < word.start + max(0.08, word.duration)
+        }) {
+            return index
+        }
+        if playbackTime < words[0].start {
+            return 0
+        }
+        return words.indices.last
+    }
+
+    private func smooth(_ value: Double) -> Double {
+        value * value * (3 - 2 * value)
     }
 }
 
 private struct HorizontalScrollingLine<Content: View>: View {
     var alignment: DesktopLyricsAlignment
-    var progress: Double
+    var strategy: HorizontalScrollStrategy
     var height: CGFloat
     @ViewBuilder var content: Content
     @State private var contentWidth: CGFloat = 0
@@ -247,7 +303,7 @@ private struct HorizontalScrollingLine<Content: View>: View {
         GeometryReader { proxy in
             let viewportWidth = proxy.size.width
             let overflow = max(0, contentWidth - viewportWidth)
-            let xOffset = overflow > 1 ? -overflow * scrollPhase : 0
+            let xOffset = overflow > 1 ? -scrollOffset(viewportWidth: viewportWidth, overflow: overflow) : 0
 
             content
                 .background(
@@ -264,13 +320,36 @@ private struct HorizontalScrollingLine<Content: View>: View {
         .onPreferenceChange(DesktopLineWidthPreferenceKey.self) { contentWidth = $0 }
     }
 
-    private var scrollPhase: CGFloat {
-        let clamped = min(max(progress, 0), 1)
-        let startHold = 0.12
-        let endHold = 0.12
-        let moving = max(0.01, 1 - startHold - endHold)
-        return CGFloat(min(max((clamped - startHold) / moving, 0), 1))
+    private func scrollOffset(viewportWidth: CGFloat, overflow: CGFloat) -> CGFloat {
+        switch strategy {
+        case .centerOn(let targetX):
+            guard let targetX else { return 0 }
+            return min(max(targetX - viewportWidth / 2, 0), overflow)
+        case .timed(let progress, let textUnitCount, let lineDuration):
+            return overflow * timedScrollPhase(progress: progress, textUnitCount: textUnitCount, lineDuration: lineDuration)
+        }
     }
+
+    private func timedScrollPhase(progress: Double, textUnitCount: Int, lineDuration: TimeInterval?) -> CGFloat {
+        let clamped = min(max(progress, 0), 1)
+        guard let lineDuration, lineDuration > 0.2 else {
+            return CGFloat(clamped)
+        }
+
+        let startHold = min(0.45, max(0.18, lineDuration * 0.10))
+        let endHold = min(0.65, max(0.20, lineDuration * 0.08))
+        let availableMovingDuration = max(0.12, lineDuration - startHold - endHold)
+        let estimatedMovingDuration = max(0.8, TimeInterval(max(textUnitCount, 1)) * 0.115)
+        let movingDuration = min(availableMovingDuration, estimatedMovingDuration)
+        let currentTime = clamped * lineDuration
+        let movingProgress = (currentTime - startHold) / movingDuration
+        return CGFloat(min(max(movingProgress, 0), 1))
+    }
+}
+
+private enum HorizontalScrollStrategy {
+    case timed(progress: Double, textUnitCount: Int, lineDuration: TimeInterval?)
+    case centerOn(targetX: CGFloat?)
 }
 
 private struct DesktopLineWidthPreferenceKey: PreferenceKey {
@@ -278,6 +357,14 @@ private struct DesktopLineWidthPreferenceKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+private struct KaraokeWordFramePreferenceKey: PreferenceKey {
+    static let defaultValue: [Int: CGRect] = [:]
+
+    static func reduce(value: inout [Int: CGRect], nextValue: () -> [Int: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, next in next })
     }
 }
 
@@ -417,6 +504,15 @@ private struct DesktopKaraokeWord: Identifiable, Equatable {
 
     var peakGlow: Double {
         min(1, ceil(duration * 10) / 10)
+    }
+
+    func progress(at playbackTime: TimeInterval) -> Double {
+        let elapsed = playbackTime - start
+        return min(max(elapsed / max(0.08, duration), 0), 1)
+    }
+
+    static func displayUnitCount(in text: String) -> Int {
+        displayUnits(from: text).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
     }
 
     static func words(
