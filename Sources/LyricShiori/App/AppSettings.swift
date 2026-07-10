@@ -16,6 +16,7 @@ final class AppSettings {
     var desktopLyricsInsetBottomEnabled: Bool = true
     var desktopLyricsPreviousLineCount: Int = 0 { didSet { save(desktopLyricsPreviousLineCount, Keys.desktopLyricsPreviousLineCount) } }
     var desktopLyricsNextLineCount: Int = 1 { didSet { save(desktopLyricsNextLineCount, Keys.desktopLyricsNextLineCount) } }
+    var desktopLyricsAlignment: DesktopLyricsAlignment = .center { didSet { save(desktopLyricsAlignment.rawValue, Keys.desktopLyricsAlignment) } }
     var desktopLyricsXPositionFactor: Double = 0.5 { didSet { save(desktopLyricsXPositionFactor, Keys.desktopLyricsXPositionFactor) } }
     var desktopLyricsYPositionFactor: Double = 0.9 { didSet { save(desktopLyricsYPositionFactor, Keys.desktopLyricsYPositionFactor) } }
     var desktopLyricsColor: Color = .white { didSet { saveColor(desktopLyricsColor, Keys.desktopLyricsColor) } }
@@ -105,6 +106,7 @@ final class AppSettings {
         desktopLyricsFontSize = double(Keys.desktopLyricsFontSize, default: desktopLyricsFontSize)
         desktopLyricsPreviousLineCount = min(max(integer(Keys.desktopLyricsPreviousLineCount, default: desktopLyricsPreviousLineCount), 0), 3)
         desktopLyricsNextLineCount = min(max(integer(Keys.desktopLyricsNextLineCount, default: desktopLyricsNextLineCount), 0), 3)
+        desktopLyricsAlignment = DesktopLyricsAlignment(rawValue: string(Keys.desktopLyricsAlignment, default: desktopLyricsAlignment.rawValue)) ?? .center
         desktopLyricsXPositionFactor = double(Keys.desktopLyricsXPositionFactor, default: desktopLyricsXPositionFactor)
         desktopLyricsYPositionFactor = double(Keys.desktopLyricsYPositionFactor, default: desktopLyricsYPositionFactor)
         desktopLyricsColor = color(Keys.desktopLyricsColor, default: desktopLyricsColor)
@@ -235,6 +237,47 @@ enum ChineseConversionMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum DesktopLyricsAlignment: String, CaseIterable, Identifiable {
+    case left = "Left"
+    case center = "Center"
+    case right = "Right"
+
+    var id: String { rawValue }
+
+    var horizontalAlignment: HorizontalAlignment {
+        switch self {
+        case .left:
+            return .leading
+        case .center:
+            return .center
+        case .right:
+            return .trailing
+        }
+    }
+
+    var frameAlignment: Alignment {
+        switch self {
+        case .left:
+            return .leading
+        case .center:
+            return .center
+        case .right:
+            return .trailing
+        }
+    }
+
+    var textAlignment: TextAlignment {
+        switch self {
+        case .left:
+            return .leading
+        case .center:
+            return .center
+        case .right:
+            return .trailing
+        }
+    }
+}
+
 enum Defaults {
     static let defaultLyricsDirectoryName = "LyricShiori"
     static let legacyLyricsDirectoryName = "LyricsX"
@@ -258,6 +301,7 @@ private enum Keys {
     static let desktopLyricsFontSize = "DesktopLyricsFontSize"
     static let desktopLyricsPreviousLineCount = "DesktopLyricsPreviousLineCount"
     static let desktopLyricsNextLineCount = "DesktopLyricsNextLineCount"
+    static let desktopLyricsAlignment = "DesktopLyricsAlignment"
     static let desktopLyricsXPositionFactor = "DesktopLyricsXPositionFactor"
     static let desktopLyricsYPositionFactor = "DesktopLyricsYPositionFactor"
     static let desktopLyricsColor = "DesktopLyricsColor"

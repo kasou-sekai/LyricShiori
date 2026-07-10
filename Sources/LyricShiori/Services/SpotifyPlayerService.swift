@@ -68,7 +68,10 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
         end tell
         """
 
+        let requestStartedAt = Date()
         let output = try runAppleScript(script)
+        let requestFinishedAt = Date()
+        let capturedAt = requestStartedAt.addingTimeInterval(requestFinishedAt.timeIntervalSince(requestStartedAt) / 2)
         let lines = output.components(separatedBy: .newlines)
         guard lines.first != "stopped", lines.count >= 7 else {
             return .stopped
@@ -88,7 +91,7 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
             embeddedLyrics: nil
         )
 
-        return PlaybackSnapshot(track: track, status: status, elapsedTime: elapsed, capturedAt: Date())
+        return PlaybackSnapshot(track: track, status: status, elapsedTime: elapsed, capturedAt: capturedAt)
     }
 
     private func runSpotifyCommand(_ command: String) throws -> String {

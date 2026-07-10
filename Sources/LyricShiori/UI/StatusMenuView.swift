@@ -31,14 +31,14 @@ struct StatusMenuView: View {
             Stepper("Offset: \(store.currentLyrics?.offsetMilliseconds ?? 0) ms", value: Binding(
                 get: { store.currentLyrics?.offsetMilliseconds ?? 0 },
                 set: { store.setOffset($0) }
-            ), in: -10_000...10_000, step: 100)
+            ), in: -10_000...10_000, step: 10)
 
             Button("Increase Offset") {
-                store.adjustOffset(by: 100)
+                store.adjustOffset(by: 10)
             }
 
             Button("Decrease Offset") {
-                store.adjustOffset(by: -100)
+                store.adjustOffset(by: -10)
             }
 
             Divider()

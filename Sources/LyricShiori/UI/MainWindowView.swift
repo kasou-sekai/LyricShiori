@@ -36,7 +36,7 @@ struct MainWindowView: View {
                     }
                 }
         }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.plainText, .init(filenameExtension: "lrc")!, .init(filenameExtension: "lrcx")!]) { result in
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.init(filenameExtension: "lrcx")!]) { result in
             if case .success(let url) = result {
                 store.importLyrics(from: url)
             }

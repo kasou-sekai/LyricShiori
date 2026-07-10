@@ -7,6 +7,10 @@ struct DesktopLyricsDisplayLine: Identifiable, Equatable {
     var id: String
     var lineID: LyricsLine.ID
     var text: String
+    var wordTimings: [WordTiming]
+    var lineStart: TimeInterval
+    var lineEnd: TimeInterval?
+    var playbackTime: TimeInterval
     var isActive: Bool
     var distanceFromActive: Int
     var progress: Double
@@ -41,6 +45,7 @@ final class LyricShioriStore {
     private var playerServices: [PlayerKind: MusicPlayerService]
     private var lyricsServices: [LyricsProviderID: LyricsSearchService]
     private var playerTask: Task<Void, Never>?
+    private var lyricClockTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var activeSearchID = UUID()
     private var spotifyPlaybackObserver: NSObjectProtocol?
@@ -61,11 +66,17 @@ final class LyricShioriStore {
             .qqMusic: LyricsKitLyricsService(providerID: .qqMusic),
         ]
         self.showDesktopLyrics = settings.desktopLyricsEnabled
+        self.sharedLyricsCacheServer.onEntrySaved = { [weak self] entry in
+            Task { @MainActor in
+                self?.sharedLyricsCacheEntrySaved(entry)
+            }
+        }
     }
 
     func start() {
         installSpotifyPlaybackObserver()
         syncFullScreenPlayingConnection()
+        hydrateLocalLyricsFromSharedCache()
         syncDesktopLyricsWindow()
         playerTask?.cancel()
         playerTask = Task { [weak self] in
@@ -74,10 +85,20 @@ final class LyricShioriStore {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+        lyricClockTask?.cancel()
+        lyricClockTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await MainActor.run {
+                    self?.updateCurrentLine()
+                }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
     }
 
     func stop() {
         playerTask?.cancel()
+        lyricClockTask?.cancel()
         searchTask?.cancel()
         sharedLyricsCacheServer.stop()
         desktopLyricsWindowController?.hide()
@@ -124,28 +145,12 @@ final class LyricShioriStore {
         guard let track = playback.track else { return }
         guard !settings.noSearchingTrackIDs.contains(track.id) else { return }
 
-        do {
-            if settings.connectFullScreenPlaying {
-                if let shared = try sharedLyricsCache.loadDocument(for: track, kind: .enhanced)
-                    ?? sharedLyricsCache.loadDocument(for: track, kind: .enhancedRelaxed) {
-                    currentLyrics = settings.filter.apply(to: shared)
-                    updateCurrentLine()
-                    return
-                }
-                if let spotify = try sharedLyricsCache.loadDocument(for: track, kind: .spotify) {
-                    currentLyrics = settings.filter.apply(to: spotify)
-                    updateCurrentLine()
-                } else if let local = try localLyricsStorage().loadLyrics(for: track, includeBesideTrack: settings.loadLyricsBesideTrack) {
-                    currentLyrics = settings.filter.apply(to: local)
-                    updateCurrentLine()
-                }
-            } else if let local = try localLyricsStorage().loadLyrics(for: track, includeBesideTrack: settings.loadLyricsBesideTrack) {
-                currentLyrics = settings.filter.apply(to: local)
-                updateCurrentLine()
-            }
-        } catch {
-            lastError = error.localizedDescription
-        }
+        loadCachedLyricsForCurrentTrack(track)
+        // The playback refresh hides the window before loading the new track's cache.
+        // Re-sync here so a successfully loaded cache can show the window again.
+        syncDesktopLyricsWindow()
+        guard !currentLyricsBlocksAutomaticSearch else { return }
+        guard !settings.connectFullScreenPlaying else { return }
 
         guard !(track.album.map { settings.noSearchingAlbumNames.contains($0) } ?? false) else { return }
         let searchID = activeSearchID
@@ -206,7 +211,7 @@ final class LyricShioriStore {
                 collected.append(contentsOf: results)
                 searchResults = collected
                 if acceptFirstResult, shouldAcceptAutomaticSearchResult, let first = results.first {
-                    acceptLyrics(first.document, sourceName: first.provider.rawValue)
+                    acceptLyrics(first.document, sourceName: first.provider.rawValue, isManualSelection: false)
                 }
             } catch {
                 lastError = error.localizedDescription
@@ -224,17 +229,21 @@ final class LyricShioriStore {
         return true
     }
 
-    func acceptLyrics(_ document: LyricsDocument, sourceName: String? = nil) {
+    func acceptLyrics(_ document: LyricsDocument, sourceName: String? = nil, isManualSelection: Bool = true) {
         let track = playback.track
         var copy = settings.filter.apply(to: document)
         copy.metadata.title = copy.metadata.title?.isEmpty == false ? copy.metadata.title : track?.title
         copy.metadata.artist = copy.metadata.artist?.isEmpty == false ? copy.metadata.artist : track?.artist
         copy.metadata.album = copy.metadata.album?.isEmpty == false ? copy.metadata.album : track?.album
         copy.sourceName = sourceName ?? copy.sourceName
+        copy.selectionState = isManualSelection
+            ? .manual(origin: sourceName == LyricsProviderID.local.rawValue ? .local : .manualSelection)
+            : .automaticSearch(cachedWithoutPlugin: !settings.connectFullScreenPlaying)
         copy.needsPersist = true
         currentLyrics = copy
-        persistSharedLyrics(copy)
+        persistIfNeeded()
         updateCurrentLine()
+        syncDesktopLyricsWindow()
     }
 
     func importLyrics(from url: URL) {
@@ -275,20 +284,20 @@ final class LyricShioriStore {
 
     func adjustOffset(by delta: Int) {
         currentLyrics?.offsetMilliseconds += delta
+        currentLyrics?.selectionState = .manual(origin: .manualSelection)
         currentLyrics?.needsPersist = true
-        if let currentLyrics {
-            persistSharedLyrics(currentLyrics)
-        }
+        persistIfNeeded()
         updateCurrentLine()
+        syncDesktopLyricsWindow()
     }
 
     func setOffset(_ offset: Int) {
         currentLyrics?.offsetMilliseconds = offset
+        currentLyrics?.selectionState = .manual(origin: .manualSelection)
         currentLyrics?.needsPersist = true
-        if let currentLyrics {
-            persistSharedLyrics(currentLyrics)
-        }
+        persistIfNeeded()
         updateCurrentLine()
+        syncDesktopLyricsWindow()
     }
 
     func seek(to line: LyricsLine) async {
@@ -387,6 +396,7 @@ final class LyricShioriStore {
 
         let lowerBound = max(lyrics.lines.startIndex, index - settings.desktopLyricsPreviousLineCount)
         let upperBound = min(lyrics.lines.index(before: lyrics.lines.endIndex), index + settings.desktopLyricsNextLineCount)
+        let playbackTime = playback.effectiveElapsedTime + lyrics.adjustedDelay
         return (lowerBound...upperBound).compactMap { lineIndex in
             let line = lyrics.lines[lineIndex]
             let text = originalLineText(for: line).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -395,6 +405,14 @@ final class LyricShioriStore {
                 id: "\(line.id.uuidString)-\(lineIndex)",
                 lineID: line.id,
                 text: text,
+                wordTimings: line.wordTimings,
+                lineStart: line.position,
+                lineEnd: lyrics.lines[(lineIndex + 1)...].first?.position
+                    ?? line.wordTimings.last.flatMap { timing in
+                        timing.duration.map { timing.start + $0 }
+                    }
+                    ?? playback.track?.duration,
+                playbackTime: playbackTime,
                 isActive: lineIndex == index,
                 distanceFromActive: lineIndex - index,
                 progress: lineIndex == index ? currentLineProgress() : (lineIndex < index ? 1 : 0)
@@ -468,10 +486,15 @@ final class LyricShioriStore {
 
     func updateCurrentLine() {
         guard let currentLyrics else {
-            currentLineIndex = nil
+            if currentLineIndex != nil {
+                currentLineIndex = nil
+            }
             return
         }
-        currentLineIndex = currentLyrics.lineIndex(at: playback.effectiveElapsedTime)
+        let nextIndex = currentLyrics.lineIndex(at: playback.effectiveElapsedTime)
+        if currentLineIndex != nextIndex {
+            currentLineIndex = nextIndex
+        }
     }
 
     var shouldDisplayLyrics: Bool {
@@ -508,9 +531,66 @@ final class LyricShioriStore {
         return LocalLyricsStorage(baseDirectory: path.url, isSecurityScoped: path.securityScoped)
     }
 
+    private func loadCachedLyricsForCurrentTrack(_ track: TrackIdentity) {
+        do {
+            if let local = try localLyricsStorage().loadLyrics(for: track, includeBesideTrack: settings.loadLyricsBesideTrack) {
+                useCachedLyrics(
+                    local,
+                    for: track,
+                    persistLocal: false,
+                    syncShared: settings.connectFullScreenPlaying && local.selectionState.cacheSource == .manual
+                )
+                return
+            }
+
+            if settings.connectFullScreenPlaying {
+                return
+            }
+
+            if let automatic = try sharedLyricsCache.loadAutomaticDocument(for: track) {
+                useCachedLyrics(automatic, for: track, persistLocal: true, syncShared: false)
+            }
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func useCachedLyrics(_ document: LyricsDocument, for track: TrackIdentity, persistLocal: Bool, syncShared: Bool) {
+        let copy = settings.filter.apply(to: document)
+        currentLyrics = copy
+        updateCurrentLine()
+        syncDesktopLyricsWindow()
+        if persistLocal {
+            persistLocalLyrics(copy, for: track)
+        }
+        if syncShared {
+            persistSharedLyrics(copy, for: track)
+        }
+    }
+
+    private func sharedLyricsCacheEntrySaved(_ entry: SharedLyricsCache.Entry) {
+        if let cached = sharedLyricsCache.localPersistenceDocument(from: entry) {
+            persistLocalLyrics(cached.document, for: cached.track)
+        }
+
+        guard settings.connectFullScreenPlaying,
+              playback.track?.id == entry.trackUri,
+              let track = playback.track else {
+            return
+        }
+        loadCachedLyricsForCurrentTrack(track)
+        if currentLyricsBlocksAutomaticSearch {
+            searchTask?.cancel()
+            activeSearchID = UUID()
+        }
+    }
+
     func setFullScreenPlayingConnectionEnabled(_ enabled: Bool) {
         settings.connectFullScreenPlaying = enabled
         syncFullScreenPlayingConnection()
+        if enabled {
+            hydrateLocalLyricsFromSharedCache()
+        }
         Task { await currentTrackChanged() }
     }
 
@@ -522,9 +602,30 @@ final class LyricShioriStore {
         }
     }
 
+    private func persistLocalLyrics(_ document: LyricsDocument, for track: TrackIdentity) {
+        do {
+            _ = try localLyricsStorage().save(document, for: track)
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func hydrateLocalLyricsFromSharedCache() {
+        do {
+            for cached in try sharedLyricsCache.localPersistenceDocuments() {
+                persistLocalLyrics(cached.document, for: cached.track)
+            }
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
     private func persistSharedLyrics(_ document: LyricsDocument) {
-        guard settings.connectFullScreenPlaying,
-              let track = playback.track else { return }
+        guard let track = playback.track else { return }
+        persistSharedLyrics(document, for: track)
+    }
+
+    private func persistSharedLyrics(_ document: LyricsDocument, for track: TrackIdentity) {
         do {
             try sharedLyricsCache.save(document, for: track)
         } catch {
@@ -533,9 +634,15 @@ final class LyricShioriStore {
     }
 
     private var shouldAcceptAutomaticSearchResult: Bool {
-        currentLyrics == nil
-            || currentLyrics?.sourceName == "Spotify Shared Cache"
-            || currentLyrics?.sourceName == LyricsProviderID.local.rawValue
+        guard !settings.connectFullScreenPlaying else { return false }
+        guard currentLyrics != nil else { return true }
+        return !currentLyricsBlocksAutomaticSearch
+    }
+
+    private var currentLyricsBlocksAutomaticSearch: Bool {
+        guard let currentLyrics else { return false }
+        return currentLyrics.selectionState.cacheSource == .manual
+            || currentLyrics.selectionState.cacheSource == .plugin
     }
 
     private func spotifyReferenceDocument(matching request: ShioriLyricsSearchRequest) -> LyricsDocument? {

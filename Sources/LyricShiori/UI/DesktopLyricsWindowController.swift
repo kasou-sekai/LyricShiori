@@ -24,6 +24,8 @@ final class DesktopLyricsWindowController {
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         panel.store = store
+        panel.minSize = NSSize(width: 280, height: 72)
+        panel.maxSize = NSSize(width: 520, height: 320)
     }
 
     func show() {
@@ -39,7 +41,9 @@ final class DesktopLyricsWindowController {
         panel.isDraggable = store.settings.desktopLyricsDraggable
         panel.sharingType = store.settings.disableLyricsWhenScreenShot ? .none : .readOnly
         panel.ignoresMouseEvents = !store.settings.desktopLyricsDraggable && !store.settings.hideLyricsWhenMousePassingBy
-        panel.setFrame(frameForCurrentSettings(), display: true)
+        if !panel.isUserDragging {
+            panel.setFrame(frameForCurrentSettings(), display: true)
+        }
     }
 
     private func frameForCurrentSettings() -> NSRect {
@@ -47,8 +51,10 @@ final class DesktopLyricsWindowController {
         let screenFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
         let fontSize = store.settings.desktopLyricsFontSize
         let lineCount = max(1, store.desktopLyricsDisplayLines().count)
-        let width = min(max(620, fontSize * 24), max(320, screenFrame.width - 48))
-        let height = min(max(72, fontSize * (1.85 + Double(lineCount - 1) * 0.98)), max(92, screenFrame.height * 0.36))
+        let maxWidth = min(520, max(280, screenFrame.width - 64))
+        let maxHeight = min(320, max(96, screenFrame.height * 0.34))
+        let width = min(max(300, fontSize * 18.6), maxWidth)
+        let height = min(max(96, fontSize * (2.75 + Double(lineCount - 1) * 1.45)), maxHeight)
         let x = screenFrame.minX + screenFrame.width * store.settings.desktopLyricsXPositionFactor - width / 2
         let y = screenFrame.minY + screenFrame.height * (1 - store.settings.desktopLyricsYPositionFactor) - height / 2
         let clampedX = x.clamped(to: screenFrame.minX ... max(screenFrame.minX, screenFrame.maxX - width))
@@ -61,6 +67,7 @@ final class DesktopLyricsWindowController {
 private final class DesktopLyricsPanel: NSPanel {
     weak var store: LyricShioriStore?
     var isDraggable = true
+    var isUserDragging: Bool { dragStartMouseLocation != nil }
     private var dragStartMouseLocation: NSPoint?
     private var dragStartFrame: NSRect?
 
@@ -84,12 +91,16 @@ private final class DesktopLyricsPanel: NSPanel {
             return
         }
         let mouse = NSEvent.mouseLocation
-        let origin = NSPoint(
+        let proposedOrigin = NSPoint(
             x: dragStartFrame.origin.x + mouse.x - dragStartMouseLocation.x,
             y: dragStartFrame.origin.y + mouse.y - dragStartMouseLocation.y
         )
-        setFrameOrigin(origin)
         let screenFrame = (screen ?? NSScreen.main)?.visibleFrame ?? dragStartFrame
+        let origin = NSPoint(
+            x: proposedOrigin.x.clamped(to: screenFrame.minX ... max(screenFrame.minX, screenFrame.maxX - frame.width)),
+            y: proposedOrigin.y.clamped(to: screenFrame.minY ... max(screenFrame.minY, screenFrame.maxY - frame.height))
+        )
+        setFrameOrigin(origin)
         store?.setDesktopLyricsCenter(
             screenFrame: screenFrame,
             center: NSPoint(x: frame.midX, y: frame.midY)

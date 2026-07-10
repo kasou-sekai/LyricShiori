@@ -84,6 +84,12 @@ private struct DisplaySettingsView: View {
                 ColorPicker("Text Color", selection: $store.settings.desktopLyricsColor)
                 ColorPicker("Progress Color", selection: $store.settings.desktopLyricsProgressColor)
                 ColorPicker("Shadow Color", selection: $store.settings.desktopLyricsShadowColor)
+                Picker("Alignment", selection: $store.settings.desktopLyricsAlignment) {
+                    ForEach(DesktopLyricsAlignment.allCases) { alignment in
+                        Text(alignment.rawValue).tag(alignment)
+                    }
+                }
+                .pickerStyle(.segmented)
                 Stepper("Previous lines: \(store.settings.desktopLyricsPreviousLineCount)", value: $store.settings.desktopLyricsPreviousLineCount, in: 0...3)
                 Stepper("Next lines: \(store.settings.desktopLyricsNextLineCount)", value: $store.settings.desktopLyricsNextLineCount, in: 0...3)
                 Toggle("Draggable", isOn: $store.settings.desktopLyricsDraggable)

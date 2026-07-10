@@ -19,7 +19,29 @@ final class SharedLyricsCache: @unchecked Sendable {
         var cachedAt: Int64
         var expiresAt: Int64
         var lines: [Line]
+        var metadata: Metadata?
+        var cacheSource: LyricsCacheSource?
+        var source: Source?
+        var sourceName: String?
+        var isManualSelection: Bool?
+        var cachedWithoutPlugin: Bool?
+        var offsetMilliseconds: Int?
+        var timingOffsetApplied: Bool?
         var debug: AnyCodableValue?
+    }
+
+    struct Metadata: Codable {
+        var title: String?
+        var artist: String?
+        var album: String?
+        var languageCode: String?
+        var translationLanguages: [String]?
+    }
+
+    enum Source: String, Codable {
+        case plugin
+        case lyricShiori = "lyric-shiori"
+        case unknown
     }
 
     struct Line: Codable {
@@ -43,7 +65,7 @@ final class SharedLyricsCache: @unchecked Sendable {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    private let cacheVersion = 6
+    private let cacheVersion = 9
     private let readyTTL: Int64 = 14 * 24 * 60 * 60 * 1000
     private let emptyTTL: Int64 = 30 * 60 * 1000
     private let maxEntries = 80
@@ -51,29 +73,66 @@ final class SharedLyricsCache: @unchecked Sendable {
     init(url: URL? = nil) {
         self.url = url ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Music/\(Defaults.defaultLyricsDirectoryName)", isDirectory: true)
-            .appendingPathComponent("full-screen-lyrics-cache-v6.json")
+            .appendingPathComponent("full-screen-lyrics-cache-v9.json")
     }
 
     func loadDocument(for track: TrackIdentity) throws -> LyricsDocument? {
         guard isSpotifyTrack(track.id) else { return nil }
-        for kind in [Kind.enhanced, .enhancedRelaxed, .spotify] {
-            if let document = try loadDocument(for: track, kind: kind) {
-                return document
-            }
+        if let manual = try firstDocument(for: track, matching: { effectiveCacheSource(for: $0) == .manual }) {
+            return manual
+        }
+        if let plugin = try firstDocument(for: track, matching: { isPluginEntry($0) }) {
+            return plugin
+        }
+        for kind in preferredKinds {
+            if let document = try loadDocument(for: track, kind: kind) { return document }
         }
         return nil
+    }
+
+    func loadManualDocument(for track: TrackIdentity) throws -> LyricsDocument? {
+        try firstDocument(for: track) { effectiveCacheSource(for: $0) == .manual }
+    }
+
+    func loadPluginDocument(for track: TrackIdentity) throws -> LyricsDocument? {
+        try firstDocument(for: track) { isPluginEntry($0) }
+    }
+
+    func loadAutomaticDocument(for track: TrackIdentity) throws -> LyricsDocument? {
+        try firstDocument(for: track) {
+            effectiveCacheSource(for: $0) != .manual && !isPluginEntry($0)
+        }
     }
 
     func loadDocument(for track: TrackIdentity, kind: Kind) throws -> LyricsDocument? {
         guard isSpotifyTrack(track.id),
               let entry = try entry(trackUri: track.id, kind: kind),
-              !entry.lines.isEmpty else {
+              !entry.lines.isEmpty,
+              isEntryCompatible(entry, with: track) else {
             return nil
         }
         return document(from: entry, track: track)
     }
 
     func save(_ document: LyricsDocument, for track: TrackIdentity) throws {
+        try save(
+            document,
+            for: track,
+            source: source(for: document),
+            sourceName: document.sourceName,
+            isManualSelection: document.selectionState.isManualSelection,
+            cachedWithoutPlugin: document.selectionState.cachedWithoutPlugin
+        )
+    }
+
+    func save(
+        _ document: LyricsDocument,
+        for track: TrackIdentity,
+        source: Source,
+        sourceName: String?,
+        isManualSelection: Bool,
+        cachedWithoutPlugin: Bool
+    ) throws {
         guard isSpotifyTrack(track.id) else { return }
         let lines = lines(from: document)
         guard !lines.isEmpty else { return }
@@ -86,6 +145,20 @@ final class SharedLyricsCache: @unchecked Sendable {
                     cachedAt: now,
                     expiresAt: now + readyTTL,
                     lines: lines,
+                    metadata: Metadata(
+                        title: document.metadata.title ?? track.title,
+                        artist: document.metadata.artist ?? track.artist,
+                        album: document.metadata.album ?? track.album,
+                        languageCode: document.metadata.languageCode,
+                        translationLanguages: document.metadata.translationLanguages
+                    ),
+                    cacheSource: document.selectionState.cacheSource,
+                    source: source,
+                    sourceName: sourceName,
+                    isManualSelection: isManualSelection,
+                    cachedWithoutPlugin: cachedWithoutPlugin,
+                    offsetMilliseconds: document.offsetMilliseconds,
+                    timingOffsetApplied: false,
                     debug: nil
                 )
             )
@@ -113,7 +186,13 @@ final class SharedLyricsCache: @unchecked Sendable {
 
         var store = try loadStore()
         removeExpiredEntries(from: &store)
-        store.entries[cacheKey(trackUri: entry.trackUri, kind: entry.kind)] = entry
+        let key = cacheKey(trackUri: entry.trackUri, kind: entry.kind)
+        if effectiveCacheSource(for: store.entries[key]) == .manual,
+           effectiveCacheSource(for: entry) != .manual {
+            try persist(store)
+            return
+        }
+        store.entries[key] = entry
         trim(&store)
         try persist(store)
     }
@@ -123,9 +202,49 @@ final class SharedLyricsCache: @unchecked Sendable {
         return try encoder.encode(entry)
     }
 
-    func saveEncodedEntry(_ data: Data) throws {
+    func encodedPreferredEntry(trackUri: String, kind: Kind) throws -> Data? {
+        guard let entry = try entry(trackUri: trackUri, kind: kind),
+              isSharedBridgePreferred(entry) else {
+            return nil
+        }
+        return try encoder.encode(entry)
+    }
+
+    func encodedEntry(_ document: LyricsDocument, for track: TrackIdentity, kind: Kind) throws -> Data? {
+        let entry = entry(from: document, for: track, kind: kind)
+        guard !entry.lines.isEmpty, isSharedBridgePreferred(entry) else { return nil }
+        return try encoder.encode(entry)
+    }
+
+    @discardableResult
+    func saveEncodedEntry(_ data: Data) throws -> Entry {
         let entry = try decoder.decode(Entry.self, from: data)
         try save(entry)
+        return entry
+    }
+
+    func localPersistenceDocument(from entry: Entry) -> (track: TrackIdentity, document: LyricsDocument)? {
+        guard let track = trackIdentity(from: entry), !entry.lines.isEmpty else { return nil }
+        return (track, document(from: entry, track: track))
+    }
+
+    func localPersistenceDocuments() throws -> [(track: TrackIdentity, document: LyricsDocument)] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var store = try loadStore()
+        removeExpiredEntries(from: &store)
+        var bestEntries: [String: Entry] = [:]
+        for entry in store.entries.values where !entry.lines.isEmpty {
+            guard trackIdentity(from: entry) != nil else { continue }
+            if let existing = bestEntries[entry.trackUri],
+               compareLocalPersistencePriority(entry, existing) <= 0 {
+                continue
+            }
+            bestEntries[entry.trackUri] = entry
+        }
+        try persist(store)
+        return bestEntries.values.compactMap { localPersistenceDocument(from: $0) }
     }
 
     private func document(from entry: Entry, track: TrackIdentity) -> LyricsDocument {
@@ -152,44 +271,230 @@ final class SharedLyricsCache: @unchecked Sendable {
         }
         var document = LyricsDocument(
             metadata: LyricsMetadata(
-                title: track.title,
-                artist: track.artist,
-                album: track.album,
-                languageCode: LyricsLanguageRecognizer.recognize(in: lines.map(\.content).joined(separator: "\n")),
-                translationLanguages: lines.contains(where: { !$0.translations.isEmpty }) ? ["default"] : [],
+                title: entry.metadata?.title ?? track.title,
+                artist: entry.metadata?.artist ?? track.artist,
+                album: entry.metadata?.album ?? track.album,
+                languageCode: entry.metadata?.languageCode ?? LyricsLanguageRecognizer.recognize(in: lines.map(\.content).joined(separator: "\n")),
+                translationLanguages: entry.metadata?.translationLanguages ?? (lines.contains(where: { !$0.translations.isEmpty }) ? ["default"] : []),
                 request: nil
             ),
             lines: lines,
-            offsetMilliseconds: 0,
-            sourceName: entry.kind == .spotify ? "Spotify Shared Cache" : "Full-Screen Shared Cache",
+            offsetMilliseconds: entry.timingOffsetApplied == true ? 0 : (entry.offsetMilliseconds ?? 0),
+            sourceName: entry.sourceName ?? defaultSourceName(for: entry),
             localURL: url,
             needsPersist: false
         )
+        document.selectionState = selectionState(from: entry)
         document.metadata.languageCode = LyricsLanguageRecognizer.recognize(in: lines.map(\.content).joined(separator: "\n"))
         return document
+    }
+
+    private func entry(from document: LyricsDocument, for track: TrackIdentity, kind: Kind) -> Entry {
+        let now = nowMilliseconds()
+        return Entry(
+            kind: kind,
+            trackUri: track.id,
+            cachedAt: now,
+            expiresAt: now + readyTTL,
+            lines: lines(from: document),
+            metadata: Metadata(
+                title: document.metadata.title ?? track.title,
+                artist: document.metadata.artist ?? track.artist,
+                album: document.metadata.album ?? track.album,
+                languageCode: document.metadata.languageCode,
+                translationLanguages: document.metadata.translationLanguages
+            ),
+            cacheSource: document.selectionState.cacheSource,
+            source: source(for: document),
+            sourceName: document.sourceName,
+            isManualSelection: document.selectionState.isManualSelection,
+            cachedWithoutPlugin: document.selectionState.cachedWithoutPlugin,
+            offsetMilliseconds: document.offsetMilliseconds,
+            timingOffsetApplied: false,
+            debug: nil
+        )
     }
 
     private func lines(from document: LyricsDocument) -> [Line] {
         document.lines.compactMap { line in
             let content = line.content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !content.isEmpty else { return nil }
-            let sharedOffset = document.adjustedDelay
-            let shiftedPosition = max(0, line.position - sharedOffset)
+            let words = line.wordTimings
+                .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             return Line(
-                time: shiftedPosition * 1000,
+                time: line.position * 1000,
                 text: content,
                 translation: line.translations["default"],
                 romanization: line.translations["romanization"],
                 furigana: line.translations["furigana"],
-                words: line.wordTimings.isEmpty ? nil : line.wordTimings.map {
+                words: words.isEmpty ? nil : words.map {
                     Word(
-                        time: max(0, $0.start - sharedOffset) * 1000,
+                        time: $0.start * 1000,
                         duration: ($0.duration ?? 0) * 1000,
                         text: $0.text
                     )
                 },
                 duration: nil
             )
+        }
+    }
+
+    private var preferredKinds: [Kind] {
+        [.enhanced, .enhancedRelaxed, .spotify]
+    }
+
+    private func trackIdentity(from entry: Entry) -> TrackIdentity? {
+        let title = entry.metadata?.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let artist = entry.metadata?.artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard isSpotifyTrack(entry.trackUri), !title.isEmpty, !artist.isEmpty else {
+            return nil
+        }
+        return TrackIdentity(
+            id: entry.trackUri,
+            title: title,
+            artist: artist,
+            album: entry.metadata?.album,
+            duration: nil,
+            albumArtworkURL: nil,
+            localFileURL: nil,
+            embeddedLyrics: nil
+        )
+    }
+
+    private func compareLocalPersistencePriority(_ lhs: Entry, _ rhs: Entry) -> Int {
+        let sourceScore = localPersistenceSourceScore(lhs) - localPersistenceSourceScore(rhs)
+        if sourceScore != 0 { return sourceScore }
+        let kindScore = localPersistenceKindScore(lhs.kind) - localPersistenceKindScore(rhs.kind)
+        if kindScore != 0 { return kindScore }
+        let lineScore = lhs.lines.count - rhs.lines.count
+        if lineScore != 0 { return lineScore }
+        return Int(lhs.cachedAt - rhs.cachedAt)
+    }
+
+    private func localPersistenceSourceScore(_ entry: Entry) -> Int {
+        switch effectiveCacheSource(for: entry) {
+        case .manual:
+            return 3
+        case .plugin:
+            return 2
+        case .withoutPlugin:
+            return 1
+        }
+    }
+
+    private func localPersistenceKindScore(_ kind: Kind) -> Int {
+        switch kind {
+        case .enhanced:
+            return 3
+        case .enhancedRelaxed:
+            return 2
+        case .spotify:
+            return 1
+        }
+    }
+
+    private func firstDocument(for track: TrackIdentity, matching predicate: (Entry) -> Bool) throws -> LyricsDocument? {
+        guard isSpotifyTrack(track.id) else { return nil }
+        for kind in preferredKinds {
+            guard let entry = try entry(trackUri: track.id, kind: kind),
+                  !entry.lines.isEmpty,
+                  isEntryCompatible(entry, with: track),
+                  predicate(entry) else {
+                continue
+            }
+            return document(from: entry, track: track)
+        }
+        return nil
+    }
+
+    private func selectionState(from entry: Entry) -> LyricsSelectionState {
+        switch effectiveCacheSource(for: entry) {
+        case .manual:
+            return .manual(origin: .manualSelection)
+        case .plugin:
+            return entry.kind == .spotify
+                ? LyricsSelectionState(isManualSelection: false, origin: .spotify, cachedWithoutPlugin: false)
+                : .plugin
+        case .withoutPlugin:
+            return .automaticSearch(cachedWithoutPlugin: true)
+        }
+    }
+
+    private func defaultSourceName(for entry: Entry) -> String {
+        if effectiveCacheSource(for: entry) == .manual {
+            return "Manual Shared Cache"
+        }
+        if isPluginEntry(entry) {
+            return entry.kind == .spotify ? "Spotify Shared Cache" : "Full-Screen Shared Cache"
+        }
+        return "LyricShiori Shared Cache"
+    }
+
+    private func isPluginEntry(_ entry: Entry) -> Bool {
+        effectiveCacheSource(for: entry) == .plugin
+    }
+
+    private func isSharedBridgePreferred(_ entry: Entry) -> Bool {
+        switch effectiveCacheSource(for: entry) {
+        case .manual, .plugin:
+            return true
+        case .withoutPlugin:
+            return false
+        }
+    }
+
+    private func effectiveCacheSource(for entry: Entry?) -> LyricsCacheSource {
+        guard let entry else { return .withoutPlugin }
+        if let cacheSource = entry.cacheSource {
+            return cacheSource
+        }
+        if entry.isManualSelection == true {
+            return .manual
+        }
+        if entry.source == .plugin || (entry.source == nil && entry.kind == .spotify) {
+            return .plugin
+        }
+        return (entry.cachedWithoutPlugin ?? false) ? .withoutPlugin : .withoutPlugin
+    }
+
+    private func isEntryCompatible(_ entry: Entry, with track: TrackIdentity) -> Bool {
+        if effectiveCacheSource(for: entry) == .manual {
+            return true
+        }
+        if let title = entry.metadata?.title,
+           !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !isLooseTextMatch(title, track.title) {
+            return false
+        }
+        if let artist = entry.metadata?.artist,
+           !artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !isLooseTextMatch(artist, track.artist) {
+            return false
+        }
+        return true
+    }
+
+    private func isLooseTextMatch(_ lhs: String, _ rhs: String) -> Bool {
+        let first = normalizedText(lhs)
+        let second = normalizedText(rhs)
+        return !first.isEmpty && !second.isEmpty && (first == second || first.contains(second) || second.contains(first))
+    }
+
+    private func normalizedText(_ text: String) -> String {
+        text.precomposedStringWithCompatibilityMapping
+            .lowercased()
+            .replacingOccurrences(of: #"\[[^\]]+\]"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\([^)]*\)"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"[\s　'’"“”.,!?，。！？、:：;；~～\-—_/\\]"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func source(for document: LyricsDocument) -> Source {
+        switch document.selectionState.origin {
+        case .plugin, .spotify:
+            return .plugin
+        case .automaticSearch, .manualSelection, .local, .unknown:
+            return .lyricShiori
         }
     }
 
@@ -243,11 +548,14 @@ final class SharedLyricsCache: @unchecked Sendable {
 
 final class SharedLyricsCacheServer: @unchecked Sendable {
     private let cache: SharedLyricsCache
+    private let localStorage: LocalLyricsStorage
     private var listener: NWListener?
     private let port: NWEndpoint.Port = 24887
+    var onEntrySaved: ((SharedLyricsCache.Entry) -> Void)?
 
-    init(cache: SharedLyricsCache) {
+    init(cache: SharedLyricsCache, localStorage: LocalLyricsStorage = LocalLyricsStorage()) {
         self.cache = cache
+        self.localStorage = localStorage
     }
 
     func start() {
@@ -298,7 +606,7 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
             return false
         }
         let headers = String(text[..<headerEnd.lowerBound])
-        let bodyStart = text.distance(from: text.startIndex, to: headerEnd.upperBound)
+        let bodyStart = String(text[..<headerEnd.upperBound]).utf8.count
         let contentLength = headers
             .components(separatedBy: "\r\n")
             .first { $0.lowercased().hasPrefix("content-length:") }
@@ -311,7 +619,7 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         do {
             response = try handleRequest(data)
         } catch {
-            response = httpResponse(status: "500 Internal Server Error", body: Data(error.localizedDescription.utf8))
+            response = httpResponse(status: "500 Internal Server Error", body: Data(describe(error).utf8))
         }
         connection.send(content: response, completion: .contentProcessed { _ in
             connection.cancel()
@@ -351,20 +659,45 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
                   let kind = SharedLyricsCache.Kind(rawValue: kindValue) else {
                 return httpResponse(status: "400 Bad Request")
             }
-            guard let body = try cache.encodedEntry(trackUri: trackUri, kind: kind) else {
+            if let localBody = try encodedLocalEntry(query: query, trackUri: trackUri, kind: kind) {
+                return httpResponse(status: "200 OK", body: localBody, contentType: "application/json")
+            }
+            guard let body = try cache.encodedPreferredEntry(trackUri: trackUri, kind: kind) else {
                 return httpResponse(status: "404 Not Found")
             }
             return httpResponse(status: "200 OK", body: body, contentType: "application/json")
         }
 
         if method == "POST" {
-            let bodyStart = text.distance(from: text.startIndex, to: headerEnd.upperBound)
+            let bodyStart = String(text[..<headerEnd.upperBound]).utf8.count
             let body = data.dropFirst(bodyStart)
-            try cache.saveEncodedEntry(Data(body))
+            let entry = try cache.saveEncodedEntry(Data(body))
+            onEntrySaved?(entry)
             return httpResponse(status: "204 No Content")
         }
 
         return httpResponse(status: "405 Method Not Allowed")
+    }
+
+    private func encodedLocalEntry(query: [String: String], trackUri: String, kind: SharedLyricsCache.Kind) throws -> Data? {
+        let title = query["title"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let artist = query["artist"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !title.isEmpty, !artist.isEmpty else { return nil }
+        let duration = query["duration"].flatMap(Double.init).map { $0 / 1000 }
+        let track = TrackIdentity(
+            id: trackUri,
+            title: title,
+            artist: artist,
+            album: query["album"]?.nilIfEmpty,
+            duration: duration,
+            albumArtworkURL: nil,
+            localFileURL: nil,
+            embeddedLyrics: nil
+        )
+        guard let document = try localStorage.loadLyrics(for: track, includeBesideTrack: false) else {
+            return nil
+        }
+        return try cache.encodedEntry(document, for: track, kind: kind)
     }
 
     private func httpResponse(status: String, body: Data = Data(), contentType: String = "text/plain; charset=utf-8") -> Data {
@@ -382,6 +715,20 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         var data = Data(header.utf8)
         data.append(body)
         return data
+    }
+
+    private func describe(_ error: Error) -> String {
+        guard let decodingError = error as? DecodingError else {
+            return error.localizedDescription
+        }
+        switch decodingError {
+        case .typeMismatch(_, let context), .valueNotFound(_, let context), .keyNotFound(_, let context):
+            return "\(context.debugDescription) at \(context.codingPath.map(\.stringValue).joined(separator: "."))"
+        case .dataCorrupted(let context):
+            return "\(context.debugDescription) at \(context.codingPath.map(\.stringValue).joined(separator: "."))"
+        @unknown default:
+            return decodingError.localizedDescription
+        }
     }
 }
 
@@ -431,5 +778,11 @@ enum AnyCodableValue: Codable, Equatable {
         case .null:
             try container.encodeNil()
         }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }

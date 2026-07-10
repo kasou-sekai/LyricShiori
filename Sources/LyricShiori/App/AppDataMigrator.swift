@@ -1,35 +1,34 @@
 import Foundation
 
 enum AppDataMigrator {
-    private static let migrationKey = "Migration.LyricsXToLyricShiori.v1"
+    private static let migrationKey = "Migration.LyricShioriCacheReset.v2"
 
     static func migrateIfNeeded(
         defaults: UserDefaults = .standard,
         fileManager: FileManager = .default
     ) {
         guard !defaults.bool(forKey: migrationKey) else { return }
-        migrateLyricsDirectory(fileManager: fileManager)
+        purgeLyricsCaches(fileManager: fileManager)
         migrateLegacyPreferences(defaults: defaults, fileManager: fileManager)
         defaults.set(true, forKey: migrationKey)
     }
 
-    private static func migrateLyricsDirectory(fileManager: FileManager) {
+    private static func purgeLyricsCaches(fileManager: FileManager) {
         let musicDirectory = fileManager.urls(for: .musicDirectory, in: .userDomainMask).first
             ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Music", isDirectory: true)
-        let source = musicDirectory.appendingPathComponent(Defaults.legacyLyricsDirectoryName, isDirectory: true)
-        let destination = musicDirectory.appendingPathComponent(Defaults.defaultLyricsDirectoryName, isDirectory: true)
-        guard fileManager.fileExists(atPath: source.path) else { return }
-
         do {
-            try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
-            let files = try fileManager.contentsOfDirectory(at: source, includingPropertiesForKeys: nil)
-            for sourceURL in files {
-                let destinationURL = destination.appendingPathComponent(sourceURL.lastPathComponent)
-                guard !fileManager.fileExists(atPath: destinationURL.path) else { continue }
-                try fileManager.copyItem(at: sourceURL, to: destinationURL)
+            let directories = [
+                musicDirectory.appendingPathComponent(Defaults.defaultLyricsDirectoryName, isDirectory: true),
+                musicDirectory.appendingPathComponent(Defaults.legacyLyricsDirectoryName, isDirectory: true),
+            ]
+            for directory in directories where fileManager.fileExists(atPath: directory.path) {
+                let files = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+                for file in files where file.pathExtension.lowercased() == "lrcx" || file.lastPathComponent.hasPrefix("full-screen-lyrics-cache-") {
+                    try fileManager.removeItem(at: file)
+                }
             }
         } catch {
-            NSLog("LyricShiori migration failed while copying lyrics: \(error.localizedDescription)")
+            NSLog("LyricShiori cache reset failed: \(error.localizedDescription)")
         }
     }
 
