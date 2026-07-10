@@ -309,7 +309,7 @@ final class SharedLyricsCache: @unchecked Sendable {
         )
         document.selectionState = selectionState(from: entry)
         document.metadata.languageCode = LyricsLanguageRecognizer.recognize(in: lines.map(\.content).joined(separator: "\n"))
-        return document
+        return LyricsContentNormalizer.removingLeadingMetadata(from: document, track: track)
     }
 
     private func entry(from document: LyricsDocument, for track: TrackIdentity, kind: Kind) -> Entry {

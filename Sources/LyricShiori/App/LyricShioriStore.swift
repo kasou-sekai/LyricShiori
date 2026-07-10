@@ -243,7 +243,7 @@ final class LyricShioriStore {
 
     func acceptLyrics(_ document: LyricsDocument, sourceName: String? = nil, isManualSelection: Bool = true) {
         let track = playback.track
-        var copy = settings.filter.apply(to: document)
+        var copy = settings.filter.apply(to: LyricsContentNormalizer.removingLeadingMetadata(from: document, track: track))
         copy.metadata.title = copy.metadata.title?.isEmpty == false ? copy.metadata.title : track?.title
         copy.metadata.artist = copy.metadata.artist?.isEmpty == false ? copy.metadata.artist : track?.artist
         copy.metadata.album = copy.metadata.album?.isEmpty == false ? copy.metadata.album : track?.album
@@ -572,7 +572,7 @@ final class LyricShioriStore {
     }
 
     private func useCachedLyrics(_ document: LyricsDocument, for track: TrackIdentity, persistLocal: Bool, syncShared: Bool) {
-        let copy = settings.filter.apply(to: document)
+        let copy = settings.filter.apply(to: LyricsContentNormalizer.removingLeadingMetadata(from: document, track: track))
         currentLyrics = copy
         updateCurrentLine()
         syncDesktopLyricsWindow()

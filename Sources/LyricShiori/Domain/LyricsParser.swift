@@ -79,7 +79,7 @@ struct LyricsParser {
             document.selectionState = selectionState
         }
         document.metadata.languageCode = LyricsLanguageRecognizer.recognize(in: document.lines.map(\.content).joined(separator: "\n"))
-        return document
+        return LyricsContentNormalizer.removingLeadingMetadata(from: document)
     }
 
     private func parseMetadataLine(

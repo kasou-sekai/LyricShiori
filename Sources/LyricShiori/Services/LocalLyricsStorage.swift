@@ -155,8 +155,13 @@ struct LocalLyricsStorage: LyricsStorageService {
 
         for url in candidateURLs(for: track, includeBesideTrack: includeBesideTrack) where FileManager.default.fileExists(atPath: url.path) {
             let content = try String(contentsOf: url, encoding: .utf8)
-            if let document = try? LyricsCacheFile.decode(content, sourceName: LyricsProviderID.local.rawValue, localURL: url, track: track),
-               isMetadataCompatible(document, with: track) {
+            if let decoded = try? LyricsCacheFile.decode(content, sourceName: LyricsProviderID.local.rawValue, localURL: url, track: track) {
+                let document = LyricsContentNormalizer.removingLeadingMetadata(from: decoded, track: track)
+                if document.lines.count != decoded.lines.count {
+                    try LyricsCacheFile.encodedString(document: document, track: track).write(to: url, atomically: true, encoding: .utf8)
+                    LyricsBridgeTrace.record(event: "local.lrcx.cleaned-leading-metadata", document: document, track: track, detail: url.lastPathComponent)
+                }
+                guard isMetadataCompatible(document, with: track) else { continue }
                 LyricsBridgeTrace.record(event: "local.lrcx.loaded", document: document, track: track, detail: url.lastPathComponent)
                 return document
             }
@@ -172,9 +177,10 @@ struct LocalLyricsStorage: LyricsStorageService {
         let url = baseDirectory
             .appendingPathComponent("\(sanitize(track.title)) - \(sanitize(track.artist))")
             .appendingPathExtension("lrcx")
-        let content = LyricsCacheFile.encodedString(document: document, track: track)
+        let normalized = LyricsContentNormalizer.removingLeadingMetadata(from: document, track: track)
+        let content = LyricsCacheFile.encodedString(document: normalized, track: track)
         try content.write(to: url, atomically: true, encoding: .utf8)
-        LyricsBridgeTrace.record(event: "local.lrcx.saved", document: document, track: track, detail: url.lastPathComponent)
+        LyricsBridgeTrace.record(event: "local.lrcx.saved", document: normalized, track: track, detail: url.lastPathComponent)
         return url
     }
 
