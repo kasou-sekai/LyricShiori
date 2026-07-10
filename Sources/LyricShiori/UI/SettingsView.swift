@@ -1,21 +1,112 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Bindable var store: LyricShioriStore
+    @State private var selection: SettingsTab = .lyrics
 
     var body: some View {
-        TabView {
+        TabView(selection: $selection) {
+            CurrentLyricsSettingsView(store: store)
+                .tabItem { Label("Lyrics", systemImage: "music.note.list") }
+                .tag(SettingsTab.lyrics)
             GeneralSettingsView(store: store)
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(SettingsTab.general)
             DisplaySettingsView(store: store)
-                .tabItem { Label("Display", systemImage: "textformat") }
+                .tabItem { Label("Desktop Lyrics", systemImage: "textformat") }
+                .tag(SettingsTab.display)
             SourceSettingsView(store: store)
-                .tabItem { Label("Sources", systemImage: "network") }
+                .tabItem { Label("Search & Sources", systemImage: "magnifyingglass") }
+                .tag(SettingsTab.sources)
             FilterSettingsView(store: store)
                 .tabItem { Label("Filter", systemImage: "line.3.horizontal.decrease.circle") }
+                .tag(SettingsTab.filter)
         }
-        .padding()
+        .padding(20)
+        .alert("LyricShiori", isPresented: errorIsPresented) {
+            Button("OK") { store.lastError = nil }
+        } message: {
+            Text(store.lastError ?? "")
+        }
+    }
+
+    private var errorIsPresented: Binding<Bool> {
+        Binding(
+            get: { store.lastError != nil },
+            set: { if !$0 { store.lastError = nil } }
+        )
+    }
+}
+
+private enum SettingsTab: Hashable {
+    case lyrics
+    case general
+    case display
+    case sources
+    case filter
+}
+
+/// The live lyrics view belongs with the controls that affect it. Keeping it in
+/// Settings avoids a second, competing utility window for a menu-bar app.
+private struct CurrentLyricsSettingsView: View {
+    @Bindable var store: LyricShioriStore
+    @Environment(\.openWindow) private var openWindow
+    @State private var importing = false
+    @State private var exporting = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Label("Current Lyrics", systemImage: "music.note.list")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    importing = true
+                } label: {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                }
+                Button {
+                    exporting = true
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .disabled(store.currentLyrics == nil)
+                Button {
+                    openWindow(id: "search-lyrics")
+                    WindowActivator.bringToFront(titleContaining: "Search Lyrics")
+                } label: {
+                    Label("Search", systemImage: "magnifyingglass")
+                }
+                .disabled(store.playback.track == nil)
+                Toggle(isOn: $store.settings.desktopLyricsEnabled) {
+                    Image(systemName: "rectangle.on.rectangle")
+                }
+                .toggleStyle(.switch)
+                .help("Show desktop lyrics")
+                .onChange(of: store.settings.desktopLyricsEnabled) { _, _ in
+                    store.syncDesktopLyricsWindow()
+                }
+            }
+            .padding(.bottom, 12)
+
+            Divider()
+
+            LyricsDetailView(store: store)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.init(filenameExtension: "lrcx")!]) { result in
+            if case .success(let url) = result {
+                store.importLyrics(from: url)
+            }
+        }
+        .fileExporter(
+            isPresented: $exporting,
+            document: LyricsFileDocument(text: store.currentLyrics?.lrcx ?? ""),
+            contentType: .plainText,
+            defaultFilename: store.playback.track?.title ?? "Lyrics"
+        ) { _ in }
     }
 }
 
@@ -24,29 +115,38 @@ private struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
-            LabeledContent("Player", value: "Spotify")
-            LabeledContent("Spotify Access", value: store.spotifyAccessMessage)
-            Button {
-                Task { await store.requestSpotifyAccess() }
-            } label: {
-                Label("Authorize Spotify", systemImage: "lock.open")
+            Section("Playback") {
+                LabeledContent("Player", value: "Spotify")
+                LabeledContent("Spotify access", value: store.spotifyAccessMessage)
+                Button {
+                    Task { await store.requestSpotifyAccess() }
+                } label: {
+                    Label("Authorize Spotify", systemImage: "lock.open")
+                }
+                Toggle("Load lyrics beside the track", isOn: $store.settings.loadLyricsBesideTrack)
+                Toggle("Hide lyrics while paused", isOn: $store.settings.disableLyricsWhenPaused)
             }
-            Toggle("Load lyrics beside track", isOn: $store.settings.loadLyricsBesideTrack)
-            Toggle("Disable lyrics when paused", isOn: $store.settings.disableLyricsWhenPaused)
 
-            Section("Lyrics Folder") {
-                LabeledContent("Current Folder", value: store.settings.lyricsSavingPath.url.path)
-                Toggle("Use Custom Folder", isOn: $store.settings.useCustomLyricsSavingPath)
+            Section("Storage") {
+                LabeledContent("Lyrics folder") {
+                    Text(store.settings.lyricsSavingPath.url.path)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+                Toggle("Use a custom folder", isOn: $store.settings.useCustomLyricsSavingPath)
                 Button {
                     chooseLyricsFolder()
                 } label: {
-                    Label("Choose Folder", systemImage: "folder")
+                    Label("Choose Folder…", systemImage: "folder")
                 }
             }
 
-            Picker("Chinese Conversion", selection: $store.settings.chineseConversionMode) {
-                ForEach(ChineseConversionMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
+            Section("Text") {
+                Picker("Chinese conversion", selection: $store.settings.chineseConversionMode) {
+                    ForEach(ChineseConversionMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
                 }
             }
         }
@@ -72,51 +172,51 @@ private struct DisplaySettingsView: View {
 
     var body: some View {
         Form {
-            Section("Desktop Lyrics") {
-                Toggle("Enabled", isOn: $store.settings.desktopLyricsEnabled)
+            Section("Desktop lyrics") {
+                Toggle("Show desktop lyrics", isOn: $store.settings.desktopLyricsEnabled)
+                    .onChange(of: store.settings.desktopLyricsEnabled) { _, _ in
+                        store.syncDesktopLyricsWindow()
+                    }
+                Toggle("Allow dragging", isOn: $store.settings.desktopLyricsDraggable)
+                Toggle("Hide when the pointer passes over", isOn: $store.settings.hideLyricsWhenMousePassingBy)
+                Toggle("Hide from screenshots", isOn: $store.settings.disableLyricsWhenScreenShot)
+                Toggle("Show furigana", isOn: $store.settings.desktopLyricsEnableFurigana)
+            }
+
+            Section("Typography") {
                 Slider(value: $store.settings.desktopLyricsFontSize, in: 12...72, step: 1) {
-                    Text("Font Size")
+                    Text("Font size")
                 } minimumValueLabel: {
                     Text("12")
                 } maximumValueLabel: {
                     Text("72")
                 }
-                ColorPicker("Text Color", selection: $store.settings.desktopLyricsColor)
-                ColorPicker("Progress Color", selection: $store.settings.desktopLyricsProgressColor)
-                ColorPicker("Shadow Color", selection: $store.settings.desktopLyricsShadowColor)
+                ColorPicker("Text color", selection: $store.settings.desktopLyricsColor)
+                ColorPicker("Progress color", selection: $store.settings.desktopLyricsProgressColor)
+                ColorPicker("Shadow color", selection: $store.settings.desktopLyricsShadowColor)
                 Picker("Alignment", selection: $store.settings.desktopLyricsAlignment) {
                     ForEach(DesktopLyricsAlignment.allCases) { alignment in
                         Text(alignment.rawValue).tag(alignment)
                     }
                 }
                 .pickerStyle(.segmented)
+            }
+
+            Section("Placement") {
                 Stepper("Previous lines: \(store.settings.desktopLyricsPreviousLineCount)", value: $store.settings.desktopLyricsPreviousLineCount, in: 0...3)
                 Stepper("Next lines: \(store.settings.desktopLyricsNextLineCount)", value: $store.settings.desktopLyricsNextLineCount, in: 0...3)
-                Toggle("Draggable", isOn: $store.settings.desktopLyricsDraggable)
-                Toggle("Hide lyrics when mouse passes by", isOn: $store.settings.hideLyricsWhenMousePassingBy)
-                Toggle("Disable lyrics during screenshots", isOn: $store.settings.disableLyricsWhenScreenShot)
-                Toggle("Enable furigana", isOn: $store.settings.desktopLyricsEnableFurigana)
                 Slider(value: $store.settings.desktopLyricsXPositionFactor, in: 0...1) {
-                    Text("Horizontal Position")
+                    Text("Horizontal position")
                 }
                 Slider(value: $store.settings.desktopLyricsYPositionFactor, in: 0...1) {
-                    Text("Vertical Position")
+                    Text("Vertical position")
                 }
             }
 
-            Section("Menu Bar") {
-                Toggle("Show menu bar lyrics", isOn: $store.settings.menuBarLyricsEnabled)
-                Toggle("Combined menu bar item", isOn: $store.settings.combinedMenuBarLyrics)
+            Section("Menu bar") {
+                Toggle("Show lyrics in the menu bar", isOn: $store.settings.menuBarLyricsEnabled)
+                Toggle("Use a combined menu bar item", isOn: $store.settings.combinedMenuBarLyrics)
                 Toggle("Hide menu bar items", isOn: $store.settings.hideMenuBarItems)
-            }
-
-            Section("Lyrics Window") {
-                TextField("Font Name", text: $store.settings.lyricsWindowFontName)
-                Slider(value: $store.settings.lyricsWindowFontSize, in: 10...32, step: 1) {
-                    Text("Font Size")
-                }
-                ColorPicker("Text Color", selection: $store.settings.lyricsWindowTextColor)
-                ColorPicker("Highlight Color", selection: $store.settings.lyricsWindowHighlightColor)
             }
         }
         .formStyle(.grouped)
@@ -128,16 +228,23 @@ private struct SourceSettingsView: View {
 
     var body: some View {
         Form {
-            Toggle("Use source priority order", isOn: $store.settings.lyricsSourcePriorityEnabled)
-            Stepper("Priority window: \(Int(store.settings.lyricsPriorityWindow)) s", value: $store.settings.lyricsPriorityWindow, in: 0...30, step: 1)
-            Toggle("Strict search matching", isOn: $store.settings.strictSearchEnabled)
-            Toggle("Prefer bilingual lyrics", isOn: $store.settings.preferBilingualLyrics)
-            Toggle("Connect Full-Screen Playing", isOn: Binding(
-                get: { store.settings.connectFullScreenPlaying },
-                set: { store.setFullScreenPlayingConnectionEnabled($0) }
-            ))
+            Section("Manual search") {
+                Text("Every result with usable lyrics is shown and ranked, so you can choose the right version yourself.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
 
-            Section("Enabled Sources") {
+            Section("Automatic search") {
+                Toggle("Use source priority order", isOn: $store.settings.lyricsSourcePriorityEnabled)
+                Stepper("Priority window: \(Int(store.settings.lyricsPriorityWindow)) s", value: $store.settings.lyricsPriorityWindow, in: 0...30, step: 1)
+                Toggle("Prefer bilingual lyrics", isOn: $store.settings.preferBilingualLyrics)
+                Toggle("Connect Full-Screen Playing", isOn: Binding(
+                    get: { store.settings.connectFullScreenPlaying },
+                    set: { store.setFullScreenPlayingConnectionEnabled($0) }
+                ))
+            }
+
+            Section("Enabled sources") {
                 ForEach([LyricsProviderID.netease, .qqMusic]) { provider in
                     Toggle(provider.rawValue, isOn: Binding(
                         get: { store.settings.enabledProviders.contains(provider) },
@@ -161,19 +268,21 @@ private struct FilterSettingsView: View {
     @State private var newPattern = ""
 
     var body: some View {
-        VStack(alignment: .leading) {
+        VStack(alignment: .leading, spacing: 12) {
             Toggle("Enable lyrics filter", isOn: $store.settings.lyricsFilterEnabled)
             Toggle("Enable smart filter", isOn: $store.settings.lyricsSmartFilterEnabled)
 
             HStack {
                 TextField("Pattern or keyword", text: $newPattern)
                 Button {
-                    guard !newPattern.isEmpty else { return }
-                    store.settings.lyricsFilterKeys.append(newPattern)
+                    let pattern = newPattern.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !pattern.isEmpty else { return }
+                    store.settings.lyricsFilterKeys.append(pattern)
                     newPattern = ""
                 } label: {
                     Label("Add", systemImage: "plus")
                 }
+                .disabled(newPattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
             List {
@@ -182,6 +291,11 @@ private struct FilterSettingsView: View {
                 }
                 .onDelete { indexSet in
                     store.settings.lyricsFilterKeys.remove(atOffsets: indexSet)
+                }
+            }
+            .overlay {
+                if store.settings.lyricsFilterKeys.isEmpty {
+                    ContentUnavailableView("No filter patterns", systemImage: "line.3.horizontal.decrease.circle")
                 }
             }
         }

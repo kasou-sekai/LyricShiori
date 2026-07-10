@@ -1,26 +1,48 @@
 import Foundation
 
 struct LyricsCandidateMatcher {
+    enum Mode: Equatable {
+        /// Used when the app is about to pick a result without asking the user.
+        case strictAutomatic
+        /// Used by the manual picker: retain candidates and make their relevance visible.
+        case rankedManual
+    }
+
     private let request: ShioriLyricsSearchRequest
     private let referenceDocument: LyricsDocument?
+    private let mode: Mode
     private let durationTolerance: TimeInterval = 12
     private let firstLineTimeTolerance: TimeInterval = 2.5
 
-    init(request: ShioriLyricsSearchRequest, referenceDocument: LyricsDocument? = nil) {
+    init(
+        request: ShioriLyricsSearchRequest,
+        referenceDocument: LyricsDocument? = nil,
+        mode: Mode = .strictAutomatic
+    ) {
         self.request = request
         self.referenceDocument = referenceDocument
+        self.mode = mode
     }
 
     func evaluate(_ result: LyricsSearchResult) -> LyricsSearchResult? {
-        guard isBaseTitleMatch(result.title, request.title) else { return nil }
-        guard isDurationMatch(result.duration, request.duration) else { return nil }
-        guard isArtistOrAlbumMatch(result) else { return nil }
         guard firstMeaningfulLine(in: result.document) != nil else { return nil }
-        guard isFirstLineMatch(result.document) else { return nil }
+
+        let titleMatches = isBaseTitleMatch(result.title, request.title)
+        let durationMatches = isDurationMatch(result.duration, request.duration)
+        let artistOrAlbumMatches = isArtistOrAlbumMatch(result)
+        let firstLineMatches = isFirstLineMatch(result.document)
+        let isStrictMatch = titleMatches && durationMatches && artistOrAlbumMatches && firstLineMatches
+        guard mode == .rankedManual || isStrictMatch else { return nil }
 
         var copy = result
-        copy.quality = quality(for: result)
-        copy.isMatched = true
+        copy.quality = quality(for: result) + relevanceScore(
+            titleMatches: titleMatches,
+            artistOrAlbumMatches: artistOrAlbumMatches,
+            durationMatches: durationMatches,
+            firstLineMatches: firstLineMatches,
+            result: result
+        )
+        copy.isMatched = isStrictMatch
         return copy
     }
 
@@ -54,6 +76,25 @@ struct LyricsCandidateMatcher {
             + Double(translation * 3)
             + Double(romanization)
             + durationScore
+    }
+
+    private func relevanceScore(
+        titleMatches: Bool,
+        artistOrAlbumMatches: Bool,
+        durationMatches: Bool,
+        firstLineMatches: Bool,
+        result: LyricsSearchResult
+    ) -> Double {
+        var score = 0.0
+        if titleMatches {
+            score += 4_000
+        } else if isLooseTextMatch(result.title, request.title) {
+            score += 1_500
+        }
+        if artistOrAlbumMatches { score += 800 }
+        if durationMatches { score += 300 }
+        if firstLineMatches { score += 200 }
+        return score
     }
 
     private func isBaseTitleMatch(_ candidateTitle: String, _ trackTitle: String) -> Bool {

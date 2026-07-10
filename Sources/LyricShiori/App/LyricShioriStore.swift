@@ -197,9 +197,21 @@ final class LyricShioriStore {
         defer { isSearching = false }
         searchResults = []
 
-        let request = ShioriLyricsSearchRequest(title: cleanTitle, artist: cleanArtist, album: album, duration: duration, limit: 8)
+        // A manual search is a chooser, not an automatic decision. Ask each
+        // provider for a broad result set so alternate versions remain visible.
+        let request = ShioriLyricsSearchRequest(
+            title: cleanTitle,
+            artist: cleanArtist,
+            album: album,
+            duration: duration,
+            limit: acceptFirstResult ? 8 : 50
+        )
         var collected: [LyricsSearchResult] = []
-        let matcher = LyricsCandidateMatcher(request: request, referenceDocument: spotifyReferenceDocument(matching: request))
+        let matcher = LyricsCandidateMatcher(
+            request: request,
+            referenceDocument: spotifyReferenceDocument(matching: request),
+            mode: acceptFirstResult ? .strictAutomatic : .rankedManual
+        )
         for providerID in orderedProviders() {
             guard !Task.isCancelled, isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) else { return }
             guard let service = lyricsServices[providerID] else { continue }
@@ -209,7 +221,7 @@ final class LyricShioriStore {
                     .sorted(by: matcher.sort)
                 guard !Task.isCancelled, isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) else { return }
                 collected.append(contentsOf: results)
-                searchResults = collected
+                searchResults = collected.sorted(by: matcher.sort)
                 if acceptFirstResult, shouldAcceptAutomaticSearchResult, let first = results.first {
                     acceptLyrics(first.document, sourceName: first.provider.rawValue, isManualSelection: false)
                 }
@@ -298,6 +310,10 @@ final class LyricShioriStore {
         persistIfNeeded()
         updateCurrentLine()
         syncDesktopLyricsWindow()
+    }
+
+    func resetOffset() {
+        setOffset(0)
     }
 
     func seek(to line: LyricsLine) async {
@@ -569,7 +585,7 @@ final class LyricShioriStore {
     }
 
     private func sharedLyricsCacheEntrySaved(_ entry: SharedLyricsCache.Entry) {
-        if let cached = sharedLyricsCache.localPersistenceDocument(from: entry) {
+        if let cached = try? sharedLyricsCache.bestLocalPersistenceDocument(for: entry.trackUri) {
             persistLocalLyrics(cached.document, for: cached.track)
         }
 

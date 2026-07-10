@@ -24,21 +24,23 @@ struct StatusMenuView: View {
 
             Button("Search Lyrics") {
                 openWindow(id: "search-lyrics")
+                WindowActivator.bringToFront(titleContaining: "Search Lyrics")
             }
 
             Divider()
 
-            Stepper("Offset: \(store.currentLyrics?.offsetMilliseconds ?? 0) ms", value: Binding(
-                get: { store.currentLyrics?.offsetMilliseconds ?? 0 },
-                set: { store.setOffset($0) }
-            ), in: -10_000...10_000, step: 10)
+            Stepper("Offset: \(store.currentLyrics?.offsetMilliseconds ?? 0) ms", value: offsetBinding, in: -10_000...10_000, step: 100)
 
             Button("Increase Offset") {
-                store.adjustOffset(by: 10)
+                store.adjustOffset(by: 100)
             }
 
             Button("Decrease Offset") {
-                store.adjustOffset(by: -10)
+                store.adjustOffset(by: -100)
+            }
+
+            Button("Reset Offset") {
+                store.resetOffset()
             }
 
             Divider()
@@ -57,6 +59,7 @@ struct StatusMenuView: View {
 
             Button("Settings") {
                 openSettings()
+                WindowActivator.bringToFront(titleContaining: "Settings")
             }
 
             Button("Quit LyricShiori") {
@@ -65,6 +68,13 @@ struct StatusMenuView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var offsetBinding: Binding<Int> {
+        Binding(
+            get: { store.currentLyrics?.offsetMilliseconds ?? 0 },
+            set: { store.setOffset($0) }
+        )
     }
 }
 

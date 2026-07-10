@@ -190,11 +190,13 @@ final class SharedLyricsCache: @unchecked Sendable {
         if effectiveCacheSource(for: store.entries[key]) == .manual,
            effectiveCacheSource(for: entry) != .manual {
             try persist(store)
+            LyricsBridgeTrace.record(event: "cache.rejected.manual-preserved", entry: entry)
             return
         }
         store.entries[key] = entry
         trim(&store)
         try persist(store)
+        LyricsBridgeTrace.record(event: "cache.saved", entry: entry)
     }
 
     func encodedEntry(trackUri: String, kind: Kind) throws -> Data? {
@@ -210,6 +212,16 @@ final class SharedLyricsCache: @unchecked Sendable {
         return try encoder.encode(entry)
     }
 
+    func encodedBestPreferredEntry(_ document: LyricsDocument, for track: TrackIdentity, kind: Kind) throws -> Data? {
+        let localEntry = entry(from: document, for: track, kind: kind)
+        let cachedEntry = try entry(trackUri: track.id, kind: kind)
+        let candidates = [localEntry, cachedEntry]
+            .compactMap { $0 }
+            .filter { isSharedBridgePreferred($0) }
+        guard let best = bestLocalPersistenceEntry(from: candidates) else { return nil }
+        return try encoder.encode(best)
+    }
+
     func encodedEntry(_ document: LyricsDocument, for track: TrackIdentity, kind: Kind) throws -> Data? {
         let entry = entry(from: document, for: track, kind: kind)
         guard !entry.lines.isEmpty, isSharedBridgePreferred(entry) else { return nil }
@@ -219,6 +231,7 @@ final class SharedLyricsCache: @unchecked Sendable {
     @discardableResult
     func saveEncodedEntry(_ data: Data) throws -> Entry {
         let entry = try decoder.decode(Entry.self, from: data)
+        LyricsBridgeTrace.record(event: "bridge.received", entry: entry)
         try save(entry)
         return entry
     }
@@ -228,21 +241,31 @@ final class SharedLyricsCache: @unchecked Sendable {
         return (track, document(from: entry, track: track))
     }
 
+    func bestLocalPersistenceDocument(for trackURI: String) throws -> (track: TrackIdentity, document: LyricsDocument)? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var store = try loadStore()
+        removeExpiredEntries(from: &store)
+        guard let entry = bestLocalPersistenceEntry(
+            from: store.entries.values.filter { $0.trackUri == trackURI }
+        ), let document = localPersistenceDocument(from: entry) else {
+            try persist(store)
+            return nil
+        }
+        try persist(store)
+        LyricsBridgeTrace.record(event: "local.persistence.selected", entry: entry)
+        return document
+    }
+
     func localPersistenceDocuments() throws -> [(track: TrackIdentity, document: LyricsDocument)] {
         lock.lock()
         defer { lock.unlock() }
 
         var store = try loadStore()
         removeExpiredEntries(from: &store)
-        var bestEntries: [String: Entry] = [:]
-        for entry in store.entries.values where !entry.lines.isEmpty {
-            guard trackIdentity(from: entry) != nil else { continue }
-            if let existing = bestEntries[entry.trackUri],
-               compareLocalPersistencePriority(entry, existing) <= 0 {
-                continue
-            }
-            bestEntries[entry.trackUri] = entry
-        }
+        let bestEntries = Dictionary(grouping: store.entries.values.filter { !$0.lines.isEmpty && trackIdentity(from: $0) != nil }, by: \.trackUri)
+            .compactMapValues(bestLocalPersistenceEntry)
         try persist(store)
         return bestEntries.values.compactMap { localPersistenceDocument(from: $0) }
     }
@@ -364,11 +387,49 @@ final class SharedLyricsCache: @unchecked Sendable {
     private func compareLocalPersistencePriority(_ lhs: Entry, _ rhs: Entry) -> Int {
         let sourceScore = localPersistenceSourceScore(lhs) - localPersistenceSourceScore(rhs)
         if sourceScore != 0 { return sourceScore }
+        let qualityScore = compareLyricsQuality(lhs.lines, rhs.lines)
+        if qualityScore != 0 { return qualityScore }
         let kindScore = localPersistenceKindScore(lhs.kind) - localPersistenceKindScore(rhs.kind)
         if kindScore != 0 { return kindScore }
         let lineScore = lhs.lines.count - rhs.lines.count
         if lineScore != 0 { return lineScore }
         return Int(lhs.cachedAt - rhs.cachedAt)
+    }
+
+    private func bestLocalPersistenceEntry<S: Sequence>(from entries: S) -> Entry? where S.Element == Entry {
+        entries.reduce(nil) { best, entry in
+            guard let best else { return entry }
+            return compareLocalPersistencePriority(entry, best) > 0 ? entry : best
+        }
+    }
+
+    private func compareLyricsQuality(_ lhs: [Line], _ rhs: [Line]) -> Int {
+        let left = lyricsQualityScore(lhs)
+        let right = lyricsQualityScore(rhs)
+        for (leftValue, rightValue) in zip(left, right) where leftValue != rightValue {
+            return leftValue - rightValue
+        }
+        return 0
+    }
+
+    private func lyricsQualityScore(_ lines: [Line]) -> [Int] {
+        let meaningful = lines.count(where: { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        let timed = lines.count(where: { $0.time != nil })
+        let karaoke = lines.count(where: { !($0.words ?? []).isEmpty })
+        let furigana = lines.count(where: { !($0.furigana?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) })
+        let translation = lines.count(where: { !($0.translation?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) })
+        let romanization = lines.count(where: { !($0.romanization?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) })
+        return [
+            karaoke > 0 ? 1 : 0,
+            furigana > 0 ? 1 : 0,
+            translation > 0 ? 1 : 0,
+            karaoke,
+            furigana,
+            translation,
+            romanization,
+            timed,
+            meaningful,
+        ]
     }
 
     private func localPersistenceSourceScore(_ entry: Entry) -> Int {
@@ -395,16 +456,17 @@ final class SharedLyricsCache: @unchecked Sendable {
 
     private func firstDocument(for track: TrackIdentity, matching predicate: (Entry) -> Bool) throws -> LyricsDocument? {
         guard isSpotifyTrack(track.id) else { return nil }
-        for kind in preferredKinds {
+        let candidates = try preferredKinds.compactMap { kind -> Entry? in
             guard let entry = try entry(trackUri: track.id, kind: kind),
                   !entry.lines.isEmpty,
                   isEntryCompatible(entry, with: track),
                   predicate(entry) else {
-                continue
+                return nil
             }
-            return document(from: entry, track: track)
+            return entry
         }
-        return nil
+        guard let best = bestLocalPersistenceEntry(from: candidates) else { return nil }
+        return document(from: best, track: track)
     }
 
     private func selectionState(from entry: Entry) -> LyricsSelectionState {
@@ -697,7 +759,7 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         guard let document = try localStorage.loadLyrics(for: track, includeBesideTrack: false) else {
             return nil
         }
-        return try cache.encodedEntry(document, for: track, kind: kind)
+        return try cache.encodedBestPreferredEntry(document, for: track, kind: kind)
     }
 
     private func httpResponse(status: String, body: Data = Data(), contentType: String = "text/plain; charset=utf-8") -> Data {

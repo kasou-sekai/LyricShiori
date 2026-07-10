@@ -119,12 +119,14 @@ private struct SidebarView: View {
     }
 }
 
-private struct LyricsDetailView: View {
+struct LyricsDetailView: View {
     @Bindable var store: LyricShioriStore
 
     var body: some View {
         VStack(spacing: 0) {
             HeaderBar(store: store)
+            Divider()
+            OffsetControls(store: store)
             Divider()
             if let lyrics = store.currentLyrics {
                 ScrollLyricsList(store: store, lyrics: lyrics)
@@ -135,7 +137,7 @@ private struct LyricsDetailView: View {
     }
 }
 
-private struct HeaderBar: View {
+struct HeaderBar: View {
     @Bindable var store: LyricShioriStore
 
     var body: some View {
@@ -164,9 +166,63 @@ private struct HeaderBar: View {
         let seconds = Int(time.truncatingRemainder(dividingBy: 60))
         return String(format: "%02d:%02d", minutes, seconds)
     }
+
 }
 
-private struct PlaybackControls: View {
+struct OffsetControls: View {
+    @Bindable var store: LyricShioriStore
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Offset")
+                .font(.subheadline.weight(.medium))
+            TextField("Milliseconds", value: offsetBinding, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 110)
+                .disabled(store.currentLyrics == nil)
+            Text("ms")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Button {
+                store.adjustOffset(by: -100)
+            } label: {
+                Image(systemName: "minus")
+            }
+            .help("Decrease offset by 100 ms")
+            .disabled(store.currentLyrics == nil)
+
+            Button {
+                store.resetOffset()
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+            }
+            .help("Reset offset to 0 ms")
+            .disabled(store.currentLyrics == nil)
+
+            Button {
+                store.adjustOffset(by: 100)
+            } label: {
+                Image(systemName: "plus")
+            }
+            .help("Increase offset by 100 ms")
+            .disabled(store.currentLyrics == nil)
+
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
+    private var offsetBinding: Binding<Int> {
+        Binding(
+            get: { store.currentLyrics?.offsetMilliseconds ?? 0 },
+            set: { store.setOffset($0) }
+        )
+    }
+}
+
+struct PlaybackControls: View {
     @Bindable var store: LyricShioriStore
 
     var body: some View {
@@ -191,7 +247,7 @@ private struct PlaybackControls: View {
     }
 }
 
-private struct ScrollLyricsList: View {
+struct ScrollLyricsList: View {
     @Bindable var store: LyricShioriStore
     var lyrics: LyricsDocument
 

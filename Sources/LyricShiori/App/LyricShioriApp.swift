@@ -25,42 +25,6 @@ struct LyricShioriApp: App {
         }
         .menuBarExtraStyle(.menu)
 
-        WindowGroup("Lyrics Window") {
-            MainWindowView(store: store)
-                .frame(minWidth: 760, minHeight: 520)
-                .onDisappear {
-                    store.persistIfNeeded()
-                }
-        }
-        .commands {
-            CommandGroup(after: .appInfo) {
-                Button("Search Lyrics") {
-                    store.showSearchWindow = true
-                }
-                .keyboardShortcut("f", modifiers: [.command, .shift])
-
-                Button("Mark Wrong Lyrics") {
-                    store.markWrongLyrics()
-                }
-                .keyboardShortcut("w", modifiers: [.command, .shift])
-            }
-            CommandMenu("Lyrics") {
-                Button("Increase Offset") {
-                    store.adjustOffset(by: 100)
-                }
-                .keyboardShortcut(.upArrow, modifiers: [.command, .option])
-
-                Button("Decrease Offset") {
-                    store.adjustOffset(by: -100)
-                }
-                .keyboardShortcut(.downArrow, modifiers: [.command, .option])
-
-                Button("Persist Lyrics") {
-                    store.persistIfNeeded()
-                }
-            }
-        }
-
         WindowGroup("Search Lyrics", id: "search-lyrics") {
             SearchLyricsView(store: store)
                 .frame(minWidth: 640, minHeight: 440)
@@ -69,7 +33,46 @@ struct LyricShioriApp: App {
 
         Settings {
             SettingsView(store: store)
-                .frame(width: 760, height: 560)
+                .frame(width: 860, height: 640)
+        }
+        .commands {
+            LyricShioriCommands(store: store)
+        }
+    }
+}
+
+@MainActor
+private struct LyricShioriCommands: Commands {
+    let store: LyricShioriStore
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Search Lyrics") {
+                openWindow(id: "search-lyrics")
+                WindowActivator.bringToFront(titleContaining: "Search Lyrics")
+            }
+            .keyboardShortcut("f", modifiers: [.command, .shift])
+
+            Button("Mark Wrong Lyrics") {
+                store.markWrongLyrics()
+            }
+            .keyboardShortcut("w", modifiers: [.command, .shift])
+        }
+        CommandMenu("Lyrics") {
+            Button("Increase Offset") {
+                store.adjustOffset(by: 100)
+            }
+            .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+
+            Button("Decrease Offset") {
+                store.adjustOffset(by: -100)
+            }
+            .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+
+            Button("Persist Lyrics") {
+                store.persistIfNeeded()
+            }
         }
     }
 }

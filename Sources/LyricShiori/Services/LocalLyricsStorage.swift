@@ -157,6 +157,7 @@ struct LocalLyricsStorage: LyricsStorageService {
             let content = try String(contentsOf: url, encoding: .utf8)
             if let document = try? LyricsCacheFile.decode(content, sourceName: LyricsProviderID.local.rawValue, localURL: url, track: track),
                isMetadataCompatible(document, with: track) {
+                LyricsBridgeTrace.record(event: "local.lrcx.loaded", document: document, track: track, detail: url.lastPathComponent)
                 return document
             }
         }
@@ -173,6 +174,7 @@ struct LocalLyricsStorage: LyricsStorageService {
             .appendingPathExtension("lrcx")
         let content = LyricsCacheFile.encodedString(document: document, track: track)
         try content.write(to: url, atomically: true, encoding: .utf8)
+        LyricsBridgeTrace.record(event: "local.lrcx.saved", document: document, track: track, detail: url.lastPathComponent)
         return url
     }
 
