@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Bindable var store: LyricShioriStore
-    @State private var selection: SettingsTab = .lyrics
+    @State private var selection: SettingsTab = .general
 
     var body: some View {
         TabView(selection: $selection) {
@@ -80,12 +80,6 @@ private struct CurrentLyricsSettingsView: View {
                     Label("Search", systemImage: "magnifyingglass")
                 }
                 .disabled(store.playback.track == nil)
-                Toggle("Desktop Lyrics", isOn: $store.settings.desktopLyricsEnabled)
-                    .labelsHidden()
-                    .help("Show desktop lyrics")
-                .onChange(of: store.settings.desktopLyricsEnabled) { _, _ in
-                    store.syncDesktopLyricsWindow()
-                }
             }
             .padding(.bottom, 12)
 
@@ -121,8 +115,24 @@ private struct GeneralSettingsView: View {
                 } label: {
                     Label("Authorize Spotify", systemImage: "lock.open")
                 }
-                Toggle("Load lyrics beside the track", isOn: $store.settings.loadLyricsBesideTrack)
-                Toggle("Hide lyrics while paused", isOn: $store.settings.disableLyricsWhenPaused)
+            }
+
+            Section("Menu bar") {
+                Toggle("Show lyrics in the menu bar", isOn: $store.settings.menuBarLyricsEnabled)
+                Picker("Icon and lyrics", selection: $store.settings.menuBarLyricsCombined) {
+                    Text("Combined").tag(true)
+                    Text("Separate").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .disabled(!store.settings.menuBarLyricsEnabled)
+                Slider(value: $store.settings.menuBarLyricsMaxWidth, in: 80...600, step: 10) {
+                    Text("Lyrics maximum width: \(Int(store.settings.menuBarLyricsMaxWidth)) pt")
+                } minimumValueLabel: {
+                    Text("80")
+                } maximumValueLabel: {
+                    Text("600")
+                }
+                .disabled(!store.settings.menuBarLyricsEnabled)
             }
 
             Section("Storage") {
@@ -173,49 +183,22 @@ private struct DisplaySettingsView: View {
 
     var body: some View {
         Form {
-            Section("Desktop lyrics") {
+            Section("Visibility") {
                 Toggle("Show desktop lyrics", isOn: $store.settings.desktopLyricsEnabled)
                     .onChange(of: store.settings.desktopLyricsEnabled) { _, _ in
                         store.syncDesktopLyricsWindow()
                     }
-                Toggle("Mouse click-through", isOn: mousePassthroughBinding)
-                Toggle("Allow dragging", isOn: draggingBinding)
-                Toggle("Hide when the pointer passes over", isOn: hideWhenPointerPassingBinding)
+                Toggle("Hide lyrics while paused", isOn: $store.settings.disableLyricsWhenPaused)
                 Toggle("Hide from screenshots", isOn: $store.settings.disableLyricsWhenScreenShot)
             }
 
-            Section("Menu bar") {
-                Toggle("Show lyrics in the menu bar", isOn: $store.settings.menuBarLyricsEnabled)
+            Section("Interaction") {
+                Toggle("Allow dragging", isOn: draggingBinding)
+                Toggle("Hide when the pointer passes over", isOn: hideWhenPointerPassingBinding)
+                Toggle("Mouse click-through", isOn: mousePassthroughBinding)
             }
 
-            Section("Typography") {
-                Slider(value: $store.settings.desktopLyricsFontSize, in: 12...72, step: 1) {
-                    Text("Font size")
-                } minimumValueLabel: {
-                    Text("12")
-                } maximumValueLabel: {
-                    Text("72")
-                }
-                Picker("Colour preset", selection: $store.settings.desktopLyricsColorPreset) {
-                    ForEach(DesktopLyricsColorPreset.allCases) { preset in
-                        Text(preset.displayName).tag(preset)
-                    }
-                }
-                DesktopLyricsPresetPreview(preset: store.settings.desktopLyricsColorPreset, store: store)
-                if store.settings.desktopLyricsColorPreset == .custom {
-                    ColorPicker("Unplayed colour", selection: $store.settings.desktopLyricsColor)
-                    ColorPicker("Played colour", selection: $store.settings.desktopLyricsProgressColor)
-                    ColorPicker("Outline colour", selection: $store.settings.desktopLyricsShadowColor)
-                }
-                Picker("Alignment", selection: $store.settings.desktopLyricsAlignment) {
-                    ForEach(DesktopLyricsAlignment.allCases) { alignment in
-                        Text(alignment.rawValue).tag(alignment)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Section("Placement") {
+            Section("Layout") {
                 Stepper("Previous lines: \(store.settings.desktopLyricsPreviousLineCount)", value: $store.settings.desktopLyricsPreviousLineCount, in: 0...3)
                 Stepper("Next lines: \(store.settings.desktopLyricsNextLineCount)", value: $store.settings.desktopLyricsNextLineCount, in: 0...3)
                 Slider(value: $store.settings.desktopLyricsWidth, in: 280...1_000, step: 10) {
@@ -227,6 +210,35 @@ private struct DisplaySettingsView: View {
                 }
             }
 
+            Section("Typography") {
+                Slider(value: $store.settings.desktopLyricsFontSize, in: 12...72, step: 1) {
+                    Text("Font size")
+                } minimumValueLabel: {
+                    Text("12")
+                } maximumValueLabel: {
+                    Text("72")
+                }
+                Picker("Alignment", selection: $store.settings.desktopLyricsAlignment) {
+                    ForEach(DesktopLyricsAlignment.allCases) { alignment in
+                        Text(alignment.rawValue).tag(alignment)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            Section("Appearance") {
+                Picker("Colour preset", selection: $store.settings.desktopLyricsColorPreset) {
+                    ForEach(DesktopLyricsColorPreset.allCases) { preset in
+                        Text(preset.displayName).tag(preset)
+                    }
+                }
+                DesktopLyricsPresetPreview(preset: store.settings.desktopLyricsColorPreset, store: store)
+                if store.settings.desktopLyricsColorPreset == .custom {
+                    ColorPicker("Unplayed colour", selection: $store.settings.desktopLyricsColor)
+                    ColorPicker("Played colour", selection: $store.settings.desktopLyricsProgressColor)
+                    ColorPicker("Outline colour", selection: $store.settings.desktopLyricsShadowColor)
+                }
+            }
         }
         .formStyle(.grouped)
         .onChange(of: store.settings.desktopLyricsColorPreset) { _, _ in

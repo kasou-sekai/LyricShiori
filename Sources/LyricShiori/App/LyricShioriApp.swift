@@ -16,18 +16,31 @@ struct LyricShioriApp: App {
         MenuBarExtra {
             StatusMenuView(store: store)
         } label: {
-            Group {
-                if store.settings.menuBarLyricsEnabled,
-                   store.shouldDisplayLyrics,
-                   let line = store.currentLineIndex.flatMap({ store.currentLyrics?.lines[$0] }) {
-                    Text(store.originalLineText(for: line))
-                        .lineLimit(1)
-                } else {
+            if let lyrics = currentMenuBarLyrics,
+               store.settings.menuBarLyricsCombined {
+                HStack(spacing: 4) {
                     EmojiBookmarkIcon()
                         .frame(width: 18, height: 18)
+                    MenuBarLyricsLabel(text: lyrics, maxWidth: store.settings.menuBarLyricsMaxWidth)
                 }
+            } else {
+                EmojiBookmarkIcon()
+                    .frame(width: 18, height: 18)
             }
-            .accessibilityLabel("LyricShiori")
+        }
+        .menuBarExtraStyle(.window)
+
+        MenuBarExtra {
+            StatusMenuView(store: store)
+        } label: {
+            if let lyrics = currentMenuBarLyrics,
+               !store.settings.menuBarLyricsCombined {
+                MenuBarLyricsLabel(text: lyrics, maxWidth: store.settings.menuBarLyricsMaxWidth)
+                    .accessibilityLabel("LyricShiori lyrics")
+            } else {
+                Color.clear
+                    .frame(width: 0, height: 0)
+            }
         }
         .menuBarExtraStyle(.window)
 
@@ -44,6 +57,27 @@ struct LyricShioriApp: App {
         .commands {
             LyricShioriCommands(store: store)
         }
+    }
+
+    private var currentMenuBarLyrics: String? {
+        guard store.settings.menuBarLyricsEnabled,
+              store.shouldDisplayLyrics,
+              let line = store.currentLineIndex.flatMap({ store.currentLyrics?.lines[$0] }) else {
+            return nil
+        }
+        return store.originalLineText(for: line)
+    }
+}
+
+private struct MenuBarLyricsLabel: View {
+    var text: String
+    var maxWidth: Double
+
+    var body: some View {
+        Text(text)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(maxWidth: maxWidth, alignment: .leading)
     }
 }
 

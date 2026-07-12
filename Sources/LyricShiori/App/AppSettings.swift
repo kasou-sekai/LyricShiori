@@ -24,6 +24,8 @@ final class AppSettings {
     var desktopLyricsMousePassthrough: Bool = false { didSet { save(desktopLyricsMousePassthrough, Keys.desktopLyricsMousePassthrough) } }
 
     var menuBarLyricsEnabled: Bool = true { didSet { save(menuBarLyricsEnabled, Keys.menuBarLyricsEnabled) } }
+    var menuBarLyricsCombined: Bool = true { didSet { save(menuBarLyricsCombined, Keys.menuBarLyricsCombined) } }
+    var menuBarLyricsMaxWidth: Double = 260 { didSet { save(menuBarLyricsMaxWidth, Keys.menuBarLyricsMaxWidth) } }
 
     var disableLyricsWhenPaused: Bool = true { didSet { save(disableLyricsWhenPaused, Keys.disableLyricsWhenPaused) } }
     var disableLyricsWhenScreenShot: Bool = true { didSet { save(disableLyricsWhenScreenShot, Keys.disableLyricsWhenScreenShot) } }
@@ -35,7 +37,6 @@ final class AppSettings {
 
     var connectFullScreenPlaying: Bool = true { didSet { save(connectFullScreenPlaying, Keys.connectFullScreenPlaying) } }
 
-    var loadLyricsBesideTrack: Bool = true { didSet { save(loadLyricsBesideTrack, Keys.loadLyricsBesideTrack) } }
     var useCustomLyricsSavingPath: Bool = false { didSet { save(useCustomLyricsSavingPath ? 1 : 0, Keys.lyricsSavingPathPopUpIndex) } }
     var customLyricsSavingPathBookmark: Data? { didSet { saveOptionalData(customLyricsSavingPathBookmark, Keys.lyricsCustomSavingPathBookmark) } }
 
@@ -104,6 +105,8 @@ final class AppSettings {
         desktopLyricsMousePassthrough = bool(Keys.desktopLyricsMousePassthrough, default: desktopLyricsMousePassthrough)
 
         menuBarLyricsEnabled = bool(Keys.menuBarLyricsEnabled, default: menuBarLyricsEnabled)
+        menuBarLyricsCombined = bool(Keys.menuBarLyricsCombined, default: menuBarLyricsCombined)
+        menuBarLyricsMaxWidth = min(max(double(Keys.menuBarLyricsMaxWidth, default: menuBarLyricsMaxWidth), 80), 600)
         disableLyricsWhenPaused = bool(Keys.disableLyricsWhenPaused, default: disableLyricsWhenPaused)
         disableLyricsWhenScreenShot = bool(Keys.disableLyricsWhenScreenShot, default: disableLyricsWhenScreenShot)
         hideLyricsWhenMousePassingBy = bool(Keys.hideLyricsWhenMousePassingBy, default: hideLyricsWhenMousePassingBy)
@@ -113,7 +116,6 @@ final class AppSettings {
         lyricsFilterKeys = stringArray(Keys.lyricsFilterKeys, default: lyricsFilterKeys)
         connectFullScreenPlaying = bool(Keys.connectFullScreenPlaying, default: connectFullScreenPlaying)
 
-        loadLyricsBesideTrack = bool(Keys.loadLyricsBesideTrack, default: loadLyricsBesideTrack)
         useCustomLyricsSavingPath = integer(Keys.lyricsSavingPathPopUpIndex, default: useCustomLyricsSavingPath ? 1 : 0) != 0
         customLyricsSavingPathBookmark = defaults.data(forKey: Keys.lyricsCustomSavingPathBookmark)
 
@@ -308,6 +310,8 @@ private enum Keys {
     static let desktopLyricsMousePassthrough = "DesktopLyricsMousePassthrough"
 
     static let menuBarLyricsEnabled = "MenuBarLyricsEnabled"
+    static let menuBarLyricsCombined = "CombinedMenubarLyrics"
+    static let menuBarLyricsMaxWidth = "MenuBarLyricsMaxWidth"
     static let disableLyricsWhenPaused = "DisableLyricsWhenPaused"
     static let disableLyricsWhenScreenShot = "DisableLyricsWhenSreenShot"
     static let hideLyricsWhenMousePassingBy = "HideLyricsWhenMousePassingBy"
@@ -317,7 +321,6 @@ private enum Keys {
     static let lyricsFilterKeys = "LyricsFilterKeys"
     static let connectFullScreenPlaying = "ConnectFullScreenPlaying"
 
-    static let loadLyricsBesideTrack = "LoadLyricsBesideTrack"
     static let lyricsSavingPathPopUpIndex = "LyricsSavingPathPopUpIndex"
     static let lyricsCustomSavingPathBookmark = "LyricsCustomSavingPathBookmark"
 

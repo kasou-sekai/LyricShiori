@@ -749,7 +749,7 @@ final class LyricShioriStore {
 
     private func loadCachedLyricsForCurrentTrack(_ track: TrackIdentity) {
         do {
-            if let local = try localLyricsStorage().loadLyrics(for: track, includeBesideTrack: settings.loadLyricsBesideTrack) {
+            if let local = try localLyricsStorage().loadLyrics(for: track) {
                 useCachedLyrics(
                     local,
                     for: track,

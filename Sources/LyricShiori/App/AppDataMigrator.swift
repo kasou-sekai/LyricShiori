@@ -89,7 +89,6 @@ enum AppDataMigrator {
         "LyricsFilterKeys",
         "StrictSearchEnabled",
         "PreferBilingualLyrics",
-        "LoadLyricsBesideTrack",
         "LyricsSavingPathPopUpIndex",
         "LyricsCustomSavingPathBookmark",
         "NoSearchingTrackIds",

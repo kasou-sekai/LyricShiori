@@ -142,21 +142,16 @@ struct LocalLyricsStorage: LyricsStorageService {
         }
     }
 
-    func candidateURLs(for track: TrackIdentity, includeBesideTrack: Bool) -> [URL] {
-        var urls: [URL] = []
-        if includeBesideTrack, let beside = track.localFileURL?.deletingPathExtension() {
-            urls.append(beside.appendingPathExtension("lrcx"))
-        }
+    func candidateURLs(for track: TrackIdentity) -> [URL] {
         let fileName = "\(sanitize(track.title)) - \(sanitize(track.artist))"
-        urls.append(baseDirectory.appendingPathComponent(fileName).appendingPathExtension("lrcx"))
-        return unique(urls)
+        return unique([baseDirectory.appendingPathComponent(fileName).appendingPathExtension("lrcx")])
     }
 
-    func loadLyrics(for track: TrackIdentity, includeBesideTrack: Bool) throws -> LyricsDocument? {
+    func loadLyrics(for track: TrackIdentity) throws -> LyricsDocument? {
         let accessed = beginSecurityScopeIfNeeded()
         defer { endSecurityScopeIfNeeded(accessed) }
 
-        let candidates = candidateURLs(for: track, includeBesideTrack: includeBesideTrack)
+        let candidates = candidateURLs(for: track)
         for url in candidates where FileManager.default.fileExists(atPath: url.path) {
             if let document = try loadDocument(at: url, for: track) {
                 return document

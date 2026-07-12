@@ -23,8 +23,8 @@ protocol LyricsSearchService: AnyObject {
 }
 
 protocol LyricsStorageService {
-    func candidateURLs(for track: TrackIdentity, includeBesideTrack: Bool) -> [URL]
-    func loadLyrics(for track: TrackIdentity, includeBesideTrack: Bool) throws -> LyricsDocument?
+    func candidateURLs(for track: TrackIdentity) -> [URL]
+    func loadLyrics(for track: TrackIdentity) throws -> LyricsDocument?
     func save(_ document: LyricsDocument, for track: TrackIdentity) throws -> URL
     func importLyrics(from url: URL) throws -> LyricsDocument
     func export(_ document: LyricsDocument, to url: URL) throws

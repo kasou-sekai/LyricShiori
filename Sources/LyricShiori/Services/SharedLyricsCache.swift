@@ -815,7 +815,7 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
             localFileURL: nil,
             embeddedLyrics: nil
         )
-        guard let document = try localStorage.loadLyrics(for: track, includeBesideTrack: false) else {
+        guard let document = try localStorage.loadLyrics(for: track) else {
             return nil
         }
         return try cache.encodedBestPreferredEntry(document, for: track, kind: kind)
