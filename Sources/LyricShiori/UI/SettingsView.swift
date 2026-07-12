@@ -8,9 +8,6 @@ struct SettingsView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            CurrentLyricsSettingsView(store: store)
-                .tabItem { Label("Lyrics", systemImage: "music.note.list") }
-                .tag(SettingsTab.lyrics)
             GeneralSettingsView(store: store)
                 .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
@@ -20,6 +17,9 @@ struct SettingsView: View {
             SourceSettingsView(store: store)
                 .tabItem { Label("Sources", systemImage: "magnifyingglass") }
                 .tag(SettingsTab.sources)
+            CurrentLyricsSettingsView(store: store)
+                .tabItem { Label("Lyrics", systemImage: "music.note.list") }
+                .tag(SettingsTab.lyrics)
             FilterSettingsView(store: store)
                 .tabItem { Label("Filter", systemImage: "line.3.horizontal.decrease.circle") }
                 .tag(SettingsTab.filter)
@@ -178,20 +178,9 @@ private struct DisplaySettingsView: View {
                     .onChange(of: store.settings.desktopLyricsEnabled) { _, _ in
                         store.syncDesktopLyricsWindow()
                     }
-                Toggle("Mouse click-through", isOn: $store.settings.desktopLyricsMousePassthrough)
-                    .onChange(of: store.settings.desktopLyricsMousePassthrough) { _, _ in
-                        store.syncDesktopLyricsWindow()
-                    }
-                Toggle("Allow dragging", isOn: $store.settings.desktopLyricsDraggable)
-                    .disabled(store.settings.desktopLyricsMousePassthrough)
-                    .onChange(of: store.settings.desktopLyricsDraggable) { _, _ in
-                        store.syncDesktopLyricsWindow()
-                    }
-                Toggle("Hide when the pointer passes over", isOn: $store.settings.hideLyricsWhenMousePassingBy)
-                    .disabled(store.settings.desktopLyricsMousePassthrough)
-                    .onChange(of: store.settings.hideLyricsWhenMousePassingBy) { _, _ in
-                        store.syncDesktopLyricsWindow()
-                    }
+                Toggle("Mouse click-through", isOn: mousePassthroughBinding)
+                Toggle("Allow dragging", isOn: draggingBinding)
+                Toggle("Hide when the pointer passes over", isOn: hideWhenPointerPassingBinding)
                 Toggle("Hide from screenshots", isOn: $store.settings.disableLyricsWhenScreenShot)
             }
 
@@ -264,6 +253,48 @@ private struct DisplaySettingsView: View {
         .onChange(of: store.settings.desktopLyricsNextLineCount) { _, _ in
             store.syncDesktopLyricsWindow()
         }
+    }
+
+    private var mousePassthroughBinding: Binding<Bool> {
+        Binding(
+            get: { store.settings.desktopLyricsMousePassthrough },
+            set: { isEnabled in
+                store.settings.desktopLyricsMousePassthrough = isEnabled
+                if isEnabled {
+                    store.settings.desktopLyricsDraggable = false
+                    store.settings.hideLyricsWhenMousePassingBy = false
+                }
+                store.syncDesktopLyricsWindow()
+            }
+        )
+    }
+
+    private var draggingBinding: Binding<Bool> {
+        Binding(
+            get: { store.settings.desktopLyricsDraggable },
+            set: { isEnabled in
+                store.settings.desktopLyricsDraggable = isEnabled
+                if isEnabled {
+                    store.settings.desktopLyricsMousePassthrough = false
+                    store.settings.hideLyricsWhenMousePassingBy = false
+                }
+                store.syncDesktopLyricsWindow()
+            }
+        )
+    }
+
+    private var hideWhenPointerPassingBinding: Binding<Bool> {
+        Binding(
+            get: { store.settings.hideLyricsWhenMousePassingBy },
+            set: { isEnabled in
+                store.settings.hideLyricsWhenMousePassingBy = isEnabled
+                if isEnabled {
+                    store.settings.desktopLyricsMousePassthrough = false
+                    store.settings.desktopLyricsDraggable = false
+                }
+                store.syncDesktopLyricsWindow()
+            }
+        )
     }
 }
 
