@@ -1,124 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct MainWindowView: View {
-    @Bindable var store: LyricShioriStore
-    @State private var importing = false
-    @State private var exporting = false
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        NavigationSplitView {
-            SidebarView(store: store)
-        } detail: {
-            LyricsDetailView(store: store)
-                .toolbar {
-                    ToolbarItemGroup {
-                        Button {
-                            importing = true
-                        } label: {
-                            Label("Import", systemImage: "square.and.arrow.down")
-                        }
-
-                        Button {
-                            exporting = true
-                        } label: {
-                            Label("Export", systemImage: "square.and.arrow.up")
-                        }
-                        .disabled(store.currentLyrics == nil)
-
-                        Button {
-                            Task { await store.searchLyricsForCurrentTrack() }
-                        } label: {
-                            Label("Search", systemImage: "magnifyingglass")
-                        }
-                        .disabled(store.playback.track == nil || store.isSearching)
-                    }
-                }
-        }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.init(filenameExtension: "lrcx")!]) { result in
-            if case .success(let url) = result {
-                store.importLyrics(from: url)
-            }
-        }
-        .fileExporter(isPresented: $exporting, document: LyricsFileDocument(text: store.currentLyrics?.lrcx ?? ""), contentType: .plainText, defaultFilename: defaultExportName) { _ in }
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            importDroppedFile(from: providers)
-        }
-        .onChange(of: store.showSearchWindow) { _, shouldOpen in
-            if shouldOpen {
-                openWindow(id: "search-lyrics")
-                store.showSearchWindow = false
-            }
-        }
-        .alert("LyricShiori", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {
-            Button("OK") { store.lastError = nil }
-        } message: {
-            Text(store.lastError ?? "")
-        }
-    }
-
-    private var defaultExportName: String {
-        let title = store.playback.track?.title ?? "Lyrics"
-        return "\(title).lrcx"
-    }
-
-    private func importDroppedFile(from providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else {
-            return false
-        }
-        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-            let url: URL?
-            if let data = item as? Data {
-                url = URL(dataRepresentation: data, relativeTo: nil)
-            } else {
-                url = item as? URL
-            }
-            if let url {
-                Task { @MainActor in
-                    store.importLyrics(from: url)
-                }
-            }
-        }
-        return true
-    }
-}
-
-private struct SidebarView: View {
-    @Bindable var store: LyricShioriStore
-
-    var body: some View {
-        List {
-            Section("Now Playing") {
-                LabeledContent("Player", value: "Spotify")
-                LabeledContent("Status", value: store.playback.status.rawValue.capitalized)
-                LabeledContent("Title", value: store.playback.track?.title ?? "-")
-                LabeledContent("Artist", value: store.playback.track?.artist ?? "-")
-                LabeledContent("Source", value: store.currentLyrics?.sourceName ?? "-")
-            }
-
-            Section("Features") {
-                ForEach(FeatureCatalog.all) { item in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(item.title)
-                            Text(item.detail)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                        }
-                        Spacer()
-                        Text(item.status.rawValue)
-                            .font(.caption)
-                            .foregroundStyle(item.status == .available ? .green : .orange)
-                    }
-                }
-            }
-        }
-        .navigationTitle("LyricShiori")
-    }
-}
-
 struct LyricsDetailView: View {
     @Bindable var store: LyricShioriStore
 
@@ -131,7 +13,7 @@ struct LyricsDetailView: View {
             if let lyrics = store.currentLyrics {
                 ScrollLyricsList(store: store, lyrics: lyrics)
             } else {
-                ContentUnavailableView("No Lyrics", systemImage: "text.quote", description: Text("Import a LRC/LRCX file or search from a lyrics source."))
+                ContentUnavailableView("No Lyrics", systemImage: "text.quote", description: Text("Import an LRCX file or search for lyrics."))
             }
         }
     }
@@ -244,6 +126,7 @@ struct PlaybackControls: View {
             }
         }
         .labelStyle(.iconOnly)
+        .disabled(store.playback.track == nil)
     }
 }
 
@@ -292,7 +175,7 @@ struct ScrollLyricsList: View {
 }
 
 struct LyricsFileDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.plainText] }
+    static var readableContentTypes: [UTType] { [.lrcx] }
     var text: String
 
     init(text: String) {
@@ -310,4 +193,8 @@ struct LyricsFileDocument: FileDocument {
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         FileWrapper(regularFileWithContents: Data(text.utf8))
     }
+}
+
+extension UTType {
+    static let lrcx = UTType(exportedAs: "com.lyricshiori.lrcx", conformingTo: .plainText)
 }

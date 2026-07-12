@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -15,15 +16,20 @@ struct LyricShioriApp: App {
         MenuBarExtra {
             StatusMenuView(store: store)
         } label: {
-            if store.settings.menuBarLyricsEnabled,
-               store.shouldDisplayLyrics,
-               let line = store.currentLineIndex.flatMap({ store.currentLyrics?.lines[$0] }) {
-                Text(store.originalLineText(for: line))
-            } else {
-                Label("LyricShiori", systemImage: "music.note")
+            Group {
+                if store.settings.menuBarLyricsEnabled,
+                   store.shouldDisplayLyrics,
+                   let line = store.currentLineIndex.flatMap({ store.currentLyrics?.lines[$0] }) {
+                    Text(store.originalLineText(for: line))
+                        .lineLimit(1)
+                } else {
+                    EmojiBookmarkIcon()
+                        .frame(width: 18, height: 18)
+                }
             }
+            .accessibilityLabel("LyricShiori")
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
 
         WindowGroup("Search Lyrics", id: "search-lyrics") {
             SearchLyricsView(store: store)
@@ -37,6 +43,33 @@ struct LyricShioriApp: App {
         }
         .commands {
             LyricShioriCommands(store: store)
+        }
+    }
+}
+
+private struct EmojiBookmarkIcon: View {
+    private static let image: NSImage? = {
+        guard let url = Bundle.module.url(forResource: "emoji-bookmark-template", withExtension: "png"),
+              let image = NSImage(contentsOf: url) else {
+            return nil
+        }
+        // Keep the bitmap's high pixel density while giving AppKit the small
+        // point size expected of a menu-bar status image.
+        image.size = NSSize(width: 18, height: 18)
+        image.isTemplate = true
+        return image
+    }()
+
+    var body: some View {
+        Group {
+            if let image = Self.image {
+                Image(nsImage: image)
+                    .resizable()
+                    .renderingMode(.template)
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                Image(systemName: "bookmark.fill")
+            }
         }
     }
 }
@@ -69,10 +102,6 @@ private struct LyricShioriCommands: Commands {
                 store.adjustOffset(by: -100)
             }
             .keyboardShortcut(.downArrow, modifiers: [.command, .option])
-
-            Button("Persist Lyrics") {
-                store.persistIfNeeded()
-            }
         }
     }
 }

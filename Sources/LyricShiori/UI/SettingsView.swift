@@ -18,7 +18,7 @@ struct SettingsView: View {
                 .tabItem { Label("Desktop Lyrics", systemImage: "textformat") }
                 .tag(SettingsTab.display)
             SourceSettingsView(store: store)
-                .tabItem { Label("Search & Sources", systemImage: "magnifyingglass") }
+                .tabItem { Label("Sources", systemImage: "magnifyingglass") }
                 .tag(SettingsTab.sources)
             FilterSettingsView(store: store)
                 .tabItem { Label("Filter", systemImage: "line.3.horizontal.decrease.circle") }
@@ -80,11 +80,9 @@ private struct CurrentLyricsSettingsView: View {
                     Label("Search", systemImage: "magnifyingglass")
                 }
                 .disabled(store.playback.track == nil)
-                Toggle(isOn: $store.settings.desktopLyricsEnabled) {
-                    Image(systemName: "rectangle.on.rectangle")
-                }
-                .toggleStyle(.switch)
-                .help("Show desktop lyrics")
+                Toggle("Desktop Lyrics", isOn: $store.settings.desktopLyricsEnabled)
+                    .labelsHidden()
+                    .help("Show desktop lyrics")
                 .onChange(of: store.settings.desktopLyricsEnabled) { _, _ in
                     store.syncDesktopLyricsWindow()
                 }
@@ -96,7 +94,7 @@ private struct CurrentLyricsSettingsView: View {
             LyricsDetailView(store: store)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.init(filenameExtension: "lrcx")!]) { result in
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.lrcx]) { result in
             if case .success(let url) = result {
                 store.importLyrics(from: url)
             }
@@ -104,7 +102,7 @@ private struct CurrentLyricsSettingsView: View {
         .fileExporter(
             isPresented: $exporting,
             document: LyricsFileDocument(text: store.currentLyrics?.lrcx ?? ""),
-            contentType: .plainText,
+            contentType: .lrcx,
             defaultFilename: store.playback.track?.title ?? "Lyrics"
         ) { _ in }
     }
@@ -134,12 +132,15 @@ private struct GeneralSettingsView: View {
                         .truncationMode(.middle)
                         .textSelection(.enabled)
                 }
-                Toggle("Use a custom folder", isOn: $store.settings.useCustomLyricsSavingPath)
                 Button {
                     chooseLyricsFolder()
                 } label: {
                     Label("Choose Folder…", systemImage: "folder")
                 }
+                Button("Use Default Folder") {
+                    store.settings.customLyricsSavingPath = nil
+                }
+                .disabled(store.settings.customLyricsSavingPath == nil)
             }
 
             Section("Text") {
@@ -180,7 +181,10 @@ private struct DisplaySettingsView: View {
                 Toggle("Allow dragging", isOn: $store.settings.desktopLyricsDraggable)
                 Toggle("Hide when the pointer passes over", isOn: $store.settings.hideLyricsWhenMousePassingBy)
                 Toggle("Hide from screenshots", isOn: $store.settings.disableLyricsWhenScreenShot)
-                Toggle("Show furigana", isOn: $store.settings.desktopLyricsEnableFurigana)
+            }
+
+            Section("Menu bar") {
+                Toggle("Show lyrics in the menu bar", isOn: $store.settings.menuBarLyricsEnabled)
             }
 
             Section("Typography") {
@@ -191,9 +195,17 @@ private struct DisplaySettingsView: View {
                 } maximumValueLabel: {
                     Text("72")
                 }
-                ColorPicker("Text color", selection: $store.settings.desktopLyricsColor)
-                ColorPicker("Progress color", selection: $store.settings.desktopLyricsProgressColor)
-                ColorPicker("Shadow color", selection: $store.settings.desktopLyricsShadowColor)
+                Picker("Colour preset", selection: $store.settings.desktopLyricsColorPreset) {
+                    ForEach(DesktopLyricsColorPreset.allCases) { preset in
+                        Text(preset.displayName).tag(preset)
+                    }
+                }
+                DesktopLyricsPresetPreview(preset: store.settings.desktopLyricsColorPreset, store: store)
+                if store.settings.desktopLyricsColorPreset == .custom {
+                    ColorPicker("Unplayed colour", selection: $store.settings.desktopLyricsColor)
+                    ColorPicker("Played colour", selection: $store.settings.desktopLyricsProgressColor)
+                    ColorPicker("Outline colour", selection: $store.settings.desktopLyricsShadowColor)
+                }
                 Picker("Alignment", selection: $store.settings.desktopLyricsAlignment) {
                     ForEach(DesktopLyricsAlignment.allCases) { alignment in
                         Text(alignment.rawValue).tag(alignment)
@@ -213,13 +225,48 @@ private struct DisplaySettingsView: View {
                 }
             }
 
-            Section("Menu bar") {
-                Toggle("Show lyrics in the menu bar", isOn: $store.settings.menuBarLyricsEnabled)
-                Toggle("Use a combined menu bar item", isOn: $store.settings.combinedMenuBarLyrics)
-                Toggle("Hide menu bar items", isOn: $store.settings.hideMenuBarItems)
-            }
         }
         .formStyle(.grouped)
+        .onChange(of: store.settings.desktopLyricsColorPreset) { _, _ in
+            store.persistDesktopLyricsColors()
+        }
+        .onChange(of: store.settings.desktopLyricsColor) { _, _ in
+            store.persistDesktopLyricsColors()
+        }
+        .onChange(of: store.settings.desktopLyricsProgressColor) { _, _ in
+            store.persistDesktopLyricsColors()
+        }
+        .onChange(of: store.settings.desktopLyricsShadowColor) { _, _ in
+            store.persistDesktopLyricsColors()
+        }
+    }
+}
+
+private struct DesktopLyricsPresetPreview: View {
+    var preset: DesktopLyricsColorPreset
+    var store: LyricShioriStore
+
+    private var palette: DesktopLyricsPalette {
+        preset == .custom
+            ? .custom(using: store.settings)
+            : preset.previewPalette
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("Unplayed")
+                .foregroundStyle(palette.pending)
+            Text("Played")
+                .foregroundStyle(palette.played)
+            Text("Inactive")
+                .foregroundStyle(palette.secondary)
+        }
+        .font(.system(.body, weight: .semibold))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.black.opacity(0.82), in: Capsule())
+        .overlay(Capsule().stroke(palette.shadow.opacity(0.9), lineWidth: 1))
+        .accessibilityLabel("Lyrics colour preview")
     }
 }
 
@@ -228,17 +275,8 @@ private struct SourceSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Manual search") {
-                Text("Every result with usable lyrics is shown and ranked, so you can choose the right version yourself.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Automatic search") {
-                Toggle("Use source priority order", isOn: $store.settings.lyricsSourcePriorityEnabled)
-                Stepper("Priority window: \(Int(store.settings.lyricsPriorityWindow)) s", value: $store.settings.lyricsPriorityWindow, in: 0...30, step: 1)
-                Toggle("Prefer bilingual lyrics", isOn: $store.settings.preferBilingualLyrics)
-                Toggle("Connect Full-Screen Playing", isOn: Binding(
+            Section("Search") {
+                Toggle("Sync with Full-Screen Playing", isOn: Binding(
                     get: { store.settings.connectFullScreenPlaying },
                     set: { store.setFullScreenPlayingConnectionEnabled($0) }
                 ))

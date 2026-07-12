@@ -56,7 +56,7 @@ private struct DesktopLyricLineView: View {
             line: line,
             pendingColor: line.isActive ? palette.pending : palette.secondary.opacity(0.56),
             playedColor: line.isActive ? palette.played : palette.secondary,
-            shadowColor: palette.shadow.opacity(line.isActive ? 0.70 : 0.42),
+            shadowColor: palette.shadow.opacity(line.isActive ? 0.42 : 0.28),
             fontSize: lineFontSize,
             fontWeight: line.isActive ? .semibold : .regular,
             alignment: alignment
@@ -174,7 +174,7 @@ private struct ProgressiveDesktopLyricText: View {
     private var lyricText: some View {
         Text(text)
             .font(.system(size: fontSize, weight: fontWeight, design: .default))
-            .shadow(color: shadowColor, radius: fontSize * 0.12, x: 0, y: fontSize * 0.04)
+            .shadow(color: shadowColor, radius: fontSize * 0.065, x: 0, y: fontSize * 0.025)
             .lineLimit(1)
             .multilineTextAlignment(alignment.textAlignment)
             .fixedSize(horizontal: true, vertical: false)
@@ -205,7 +205,7 @@ private struct PlainDesktopLyricText: View {
             Text(text)
                 .font(.system(size: fontSize, weight: fontWeight, design: .default))
                 .foregroundStyle(textColor)
-                .shadow(color: shadowColor, radius: fontSize * 0.12, x: 0, y: fontSize * 0.04)
+                .shadow(color: shadowColor, radius: fontSize * 0.065, x: 0, y: fontSize * 0.025)
                 .lineLimit(1)
                 .multilineTextAlignment(alignment.textAlignment)
                 .fixedSize(horizontal: true, vertical: false)
@@ -469,7 +469,7 @@ private struct KaraokeDesktopWordView: View {
                 }
                 .allowsHitTesting(false)
             }
-            .shadow(color: shadowColor.opacity(0.35 + 0.65 * state.glow), radius: fontSize * (0.10 + 0.30 * state.glow), x: 0, y: fontSize * 0.03)
+            .shadow(color: shadowColor.opacity(0.32 + 0.18 * state.glow), radius: fontSize * (0.06 + 0.12 * state.glow), x: 0, y: fontSize * 0.025)
             .offset(y: fontSize * state.liftEm)
             .fixedSize(horizontal: true, vertical: false)
             .animation(.linear(duration: 0.016), value: state.progress)

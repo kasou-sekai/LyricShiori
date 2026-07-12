@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ImageIO
 import Observation
 import SwiftUI
 
@@ -19,9 +20,40 @@ struct DesktopLyricsDisplayLine: Identifiable, Equatable {
 struct DesktopLyricsPalette: Equatable {
     var pending: Color
     var played: Color
-    var active: Color
     var secondary: Color
     var shadow: Color
+
+    static func custom(using settings: AppSettings) -> Self {
+        Self(
+            pending: settings.desktopLyricsColor,
+            played: settings.desktopLyricsProgressColor,
+            secondary: settings.desktopLyricsColor.opacity(0.72),
+            shadow: settings.desktopLyricsShadowColor
+        )
+    }
+}
+
+extension DesktopLyricsColorPreset {
+    /// All presets use a dark, near-opaque outline. This keeps the bright lyric
+    /// colours legible on light wallpapers without sacrificing dark wallpapers.
+    var previewPalette: DesktopLyricsPalette {
+        switch self {
+        case .automatic:
+            DesktopLyricsColorPreset.aurora.previewPalette
+        case .aurora:
+            .init(pending: Color(red: 0.86, green: 0.95, blue: 1.00), played: Color(red: 0.15, green: 0.88, blue: 1.00), secondary: Color(red: 0.63, green: 0.75, blue: 0.84), shadow: Color.black)
+        case .orchid:
+            .init(pending: Color(red: 0.94, green: 0.87, blue: 1.00), played: Color(red: 0.77, green: 0.45, blue: 1.00), secondary: Color(red: 0.75, green: 0.63, blue: 0.84), shadow: Color.black)
+        case .meadow:
+            .init(pending: Color(red: 0.90, green: 1.00, blue: 0.84), played: Color(red: 0.34, green: 0.92, blue: 0.53), secondary: Color(red: 0.65, green: 0.78, blue: 0.61), shadow: Color.black)
+        case .sunset:
+            .init(pending: Color(red: 1.00, green: 0.92, blue: 0.78), played: Color(red: 1.00, green: 0.62, blue: 0.12), secondary: Color(red: 0.85, green: 0.70, blue: 0.53), shadow: Color.black)
+        case .rose:
+            .init(pending: Color(red: 1.00, green: 0.86, blue: 0.92), played: Color(red: 1.00, green: 0.34, blue: 0.61), secondary: Color(red: 0.82, green: 0.61, blue: 0.69), shadow: Color.black)
+        case .custom:
+            .init(pending: .white, played: .cyan, secondary: .white.opacity(0.72), shadow: .black)
+        }
+    }
 }
 
 @MainActor
@@ -34,9 +66,6 @@ final class LyricShioriStore {
     var searchResults: [LyricsSearchResult] = []
     var lastError: String?
     var isSearching = false
-    var showDesktopLyrics = true
-    var showSearchWindow = false
-    var showLyricsWindow = false
     var spotifyAccessMessage = "Not requested"
 
     @ObservationIgnored private let conversion: ChineseConversionService
@@ -50,6 +79,8 @@ final class LyricShioriStore {
     private var activeSearchID = UUID()
     private var spotifyPlaybackObserver: NSObjectProtocol?
     private var desktopLyricsWindowController: DesktopLyricsWindowController?
+    @ObservationIgnored private var artworkPresetCache: [String: DesktopLyricsColorPreset] = [:]
+    @ObservationIgnored private var artworkPresetTasks: [String: Task<Void, Never>] = [:]
 
     init(
         settings: AppSettings = AppSettings(),
@@ -65,7 +96,6 @@ final class LyricShioriStore {
             .netease: LyricsKitLyricsService(providerID: .netease),
             .qqMusic: LyricsKitLyricsService(providerID: .qqMusic),
         ]
-        self.showDesktopLyrics = settings.desktopLyricsEnabled
         self.sharedLyricsCacheServer.onEntrySaved = { [weak self] entry in
             Task { @MainActor in
                 self?.sharedLyricsCacheEntrySaved(entry)
@@ -144,7 +174,6 @@ final class LyricShioriStore {
 
         guard let track = playback.track else { return }
         guard !settings.noSearchingTrackIDs.contains(track.id) else { return }
-
         loadCachedLyricsForCurrentTrack(track)
         // The playback refresh hides the window before loading the new track's cache.
         // Re-sync here so a successfully loaded cache can show the window again.
@@ -152,7 +181,6 @@ final class LyricShioriStore {
         guard !currentLyricsBlocksAutomaticSearch else { return }
         guard !settings.connectFullScreenPlaying else { return }
 
-        guard !(track.album.map { settings.noSearchingAlbumNames.contains($0) } ?? false) else { return }
         let searchID = activeSearchID
         let trackSignature = track.signature
         searchTask = Task { [weak self] in
@@ -224,6 +252,7 @@ final class LyricShioriStore {
                 searchResults = collected.sorted(by: matcher.sort)
                 if acceptFirstResult, shouldAcceptAutomaticSearchResult, let first = results.first {
                     acceptLyrics(first.document, sourceName: first.provider.rawValue, isManualSelection: false)
+                    return
                 }
             } catch {
                 lastError = error.localizedDescription
@@ -252,6 +281,10 @@ final class LyricShioriStore {
             ? .manual(origin: sourceName == LyricsProviderID.local.rawValue ? .local : .manualSelection)
             : .automaticSearch(cachedWithoutPlugin: !settings.connectFullScreenPlaying)
         copy.needsPersist = true
+        applyDesktopLyricsColors(from: copy)
+        if isManualSelection, let track {
+            settings.noSearchingTrackIDs.remove(track.id)
+        }
         currentLyrics = copy
         persistIfNeeded()
         updateCurrentLine()
@@ -261,19 +294,6 @@ final class LyricShioriStore {
     func importLyrics(from url: URL) {
         do {
             acceptLyrics(try localLyricsStorage().importLyrics(from: url), sourceName: LyricsProviderID.local.rawValue)
-            removeCurrentTrackFromBlockLists()
-        } catch {
-            lastError = error.localizedDescription
-        }
-    }
-
-    func exportCurrentLyrics(to url: URL) {
-        guard let currentLyrics else {
-            lastError = ServiceError.noLyrics.localizedDescription
-            return
-        }
-        do {
-            try localLyricsStorage().export(currentLyrics, to: url)
         } catch {
             lastError = error.localizedDescription
         }
@@ -281,17 +301,28 @@ final class LyricShioriStore {
 
     func persistIfNeeded() {
         guard let track = playback.track,
-              let document = currentLyrics,
+              var document = currentLyrics,
               document.needsPersist else {
             return
         }
         do {
+            document.desktopLyricsColors = currentDesktopLyricsColors()
+            currentLyrics = document
             _ = try localLyricsStorage().save(document, for: track)
             try sharedLyricsCache.save(document, for: track)
             currentLyrics?.needsPersist = false
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    /// Saves the current desktop lyric appearance into the active LRCX file.
+    func persistDesktopLyricsColors() {
+        guard var document = currentLyrics else { return }
+        document.desktopLyricsColors = currentDesktopLyricsColors()
+        document.needsPersist = true
+        currentLyrics = document
+        persistIfNeeded()
     }
 
     func adjustOffset(by delta: Int) {
@@ -373,14 +404,13 @@ final class LyricShioriStore {
         currentLyrics = nil
         currentLineIndex = nil
         searchTask?.cancel()
-    }
-
-    func doNotSearchCurrentAlbum() {
-        guard let album = playback.track?.album else { return }
-        settings.noSearchingAlbumNames.insert(album)
-        currentLyrics = nil
-        currentLineIndex = nil
-        searchTask?.cancel()
+        activeSearchID = UUID()
+        do {
+            try sharedLyricsCache.hideLyrics(for: track)
+        } catch {
+            lastError = error.localizedDescription
+        }
+        syncDesktopLyricsWindow()
     }
 
     func converted(_ text: String) -> String {
@@ -453,25 +483,47 @@ final class LyricShioriStore {
     }
 
     func desktopLyricsPalette() -> DesktopLyricsPalette {
-        guard let key = playback.track?.albumArtworkURL, !key.isEmpty else {
-            return DesktopLyricsPalette(
-                pending: settings.desktopLyricsColor.opacity(0.42),
-                played: settings.desktopLyricsProgressColor,
-                active: settings.desktopLyricsColor,
-                secondary: settings.desktopLyricsColor.opacity(0.70),
-                shadow: settings.desktopLyricsShadowColor
-            )
+        switch settings.desktopLyricsColorPreset {
+        case .custom:
+            return .custom(using: settings)
+        case .automatic:
+            guard let artworkURL = playback.track?.albumArtworkURL, !artworkURL.isEmpty else {
+                return DesktopLyricsColorPreset.aurora.previewPalette
+            }
+            if let preset = artworkPresetCache[artworkURL] {
+                return preset.previewPalette
+            }
+            detectArtworkPreset(for: artworkURL)
+            return DesktopLyricsColorPreset.aurora.previewPalette
+        default:
+            return settings.desktopLyricsColorPreset.previewPalette
         }
+    }
 
-        let palettes: [DesktopLyricsPalette] = [
-            .init(pending: Color(red: 0.53, green: 0.63, blue: 0.70), played: Color(red: 0.92, green: 0.97, blue: 1.00), active: Color(red: 0.80, green: 0.91, blue: 0.98), secondary: Color(red: 0.62, green: 0.73, blue: 0.80), shadow: Color(red: 0.08, green: 0.16, blue: 0.20)),
-            .init(pending: Color(red: 0.63, green: 0.57, blue: 0.70), played: Color(red: 0.98, green: 0.93, blue: 1.00), active: Color(red: 0.90, green: 0.82, blue: 0.96), secondary: Color(red: 0.72, green: 0.65, blue: 0.80), shadow: Color(red: 0.17, green: 0.10, blue: 0.22)),
-            .init(pending: Color(red: 0.58, green: 0.66, blue: 0.56), played: Color(red: 0.94, green: 1.00, blue: 0.88), active: Color(red: 0.79, green: 0.91, blue: 0.73), secondary: Color(red: 0.68, green: 0.77, blue: 0.64), shadow: Color(red: 0.10, green: 0.18, blue: 0.10)),
-            .init(pending: Color(red: 0.70, green: 0.59, blue: 0.52), played: Color(red: 1.00, green: 0.94, blue: 0.88), active: Color(red: 0.96, green: 0.78, blue: 0.66), secondary: Color(red: 0.78, green: 0.66, blue: 0.58), shadow: Color(red: 0.22, green: 0.12, blue: 0.08)),
-            .init(pending: Color(red: 0.55, green: 0.63, blue: 0.76), played: Color(red: 0.90, green: 0.95, blue: 1.00), active: Color(red: 0.69, green: 0.81, blue: 0.98), secondary: Color(red: 0.63, green: 0.71, blue: 0.84), shadow: Color(red: 0.07, green: 0.12, blue: 0.24)),
-            .init(pending: Color(red: 0.70, green: 0.56, blue: 0.61), played: Color(red: 1.00, green: 0.91, blue: 0.94), active: Color(red: 0.96, green: 0.72, blue: 0.80), secondary: Color(red: 0.78, green: 0.63, blue: 0.68), shadow: Color(red: 0.22, green: 0.08, blue: 0.14)),
-        ]
-        return palettes[stablePaletteIndex(for: key, count: palettes.count)]
+    private func currentDesktopLyricsColors() -> DesktopLyricsColors {
+        let palette = desktopLyricsPalette()
+        return DesktopLyricsColors(
+            preset: settings.desktopLyricsColorPreset.rawValue,
+            unplayedColor: palette.pending.lrcxRGBAHex,
+            playedColor: palette.played.lrcxRGBAHex,
+            outlineColor: palette.shadow.lrcxRGBAHex
+        )
+    }
+
+    private func applyDesktopLyricsColors(from document: LyricsDocument) {
+        guard let colors = document.desktopLyricsColors else { return }
+        if let preset = colors.preset.flatMap(DesktopLyricsColorPreset.init(rawValue:)) {
+            settings.desktopLyricsColorPreset = preset
+        }
+        if let unplayed = Color(lrcxRGBAHex: colors.unplayedColor) {
+            settings.desktopLyricsColor = unplayed
+        }
+        if let played = Color(lrcxRGBAHex: colors.playedColor) {
+            settings.desktopLyricsProgressColor = played
+        }
+        if let outline = Color(lrcxRGBAHex: colors.outlineColor) {
+            settings.desktopLyricsShadowColor = outline
+        }
     }
 
     func syncDesktopLyricsWindow() {
@@ -517,29 +569,102 @@ final class LyricShioriStore {
         !(settings.disableLyricsWhenPaused && playback.status == .paused)
     }
 
-    private func stablePaletteIndex(for key: String, count: Int) -> Int {
-        guard count > 0 else { return 0 }
-        var hash = 5381
-        for scalar in key.unicodeScalars {
-            hash = ((hash << 5) &+ hash) &+ Int(scalar.value)
+    private func detectArtworkPreset(for artworkURL: String) {
+        guard artworkPresetTasks[artworkURL] == nil,
+              let url = URL(string: artworkURL) else { return }
+
+        artworkPresetTasks[artworkURL] = Task { [weak self] in
+            defer { self?.artworkPresetTasks[artworkURL] = nil }
+            guard let self else { return }
+            do {
+                let (data, response) = try await URLSession.shared.data(from: url)
+                guard let httpResponse = response as? HTTPURLResponse,
+                      (200..<300).contains(httpResponse.statusCode),
+                      !Task.isCancelled else { return }
+                self.artworkPresetCache[artworkURL] = Self.closestPreset(to: data)
+            } catch {
+                // Keep the readable Aurora fallback when Spotify's artwork is unavailable.
+            }
         }
-        return abs(hash) % count
+    }
+
+    private static func closestPreset(to artworkData: Data) -> DesktopLyricsColorPreset {
+        guard let source = CGImageSourceCreateWithData(artworkData as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+              let profile = dominantColourProfile(in: image) else {
+            return .aurora
+        }
+
+        guard profile.saturation >= 0.16 else { return .aurora }
+        let candidates: [(DesktopLyricsColorPreset, Double)] = [
+            (.aurora, 0.54),
+            (.orchid, 0.76),
+            (.meadow, 0.37),
+            (.sunset, 0.10),
+            (.rose, 0.94),
+        ]
+        return candidates.min { circularHueDistance(profile.hue, $0.1) < circularHueDistance(profile.hue, $1.1) }?.0 ?? .aurora
+    }
+
+    private static func dominantColourProfile(in image: CGImage) -> (hue: Double, saturation: Double)? {
+        let side = 32
+        let bytesPerPixel = 4
+        var pixels = [UInt8](repeating: 0, count: side * side * bytesPerPixel)
+        guard let context = CGContext(
+            data: &pixels,
+            width: side,
+            height: side,
+            bitsPerComponent: 8,
+            bytesPerRow: side * bytesPerPixel,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .medium
+        context.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
+
+        var weightedHueX = 0.0
+        var weightedHueY = 0.0
+        var weightedSaturation = 0.0
+        var weightTotal = 0.0
+        for pixel in stride(from: 0, to: pixels.count, by: bytesPerPixel) {
+            let red = Double(pixels[pixel]) / 255
+            let green = Double(pixels[pixel + 1]) / 255
+            let blue = Double(pixels[pixel + 2]) / 255
+            let maximum = max(red, green, blue)
+            let minimum = min(red, green, blue)
+            let delta = maximum - minimum
+            guard delta > 0.02, maximum > 0.08 else { continue }
+
+            let saturation = delta / maximum
+            let hue: Double
+            if maximum == red {
+                hue = ((green - blue) / delta).truncatingRemainder(dividingBy: 6)
+            } else if maximum == green {
+                hue = (blue - red) / delta + 2
+            } else {
+                hue = (red - green) / delta + 4
+            }
+            let normalizedHue = (hue < 0 ? hue + 6 : hue) / 6
+            let weight = saturation * (0.25 + maximum * 0.75)
+            weightedHueX += cos(normalizedHue * 2 * .pi) * weight
+            weightedHueY += sin(normalizedHue * 2 * .pi) * weight
+            weightedSaturation += saturation * weight
+            weightTotal += weight
+        }
+
+        guard weightTotal > 0 else { return nil }
+        let angle = atan2(weightedHueY, weightedHueX)
+        let hue = (angle < 0 ? angle + 2 * .pi : angle) / (2 * .pi)
+        return (hue, weightedSaturation / weightTotal)
+    }
+
+    private static func circularHueDistance(_ lhs: Double, _ rhs: Double) -> Double {
+        min(abs(lhs - rhs), 1 - abs(lhs - rhs))
     }
 
     private func orderedProviders() -> [LyricsProviderID] {
         let enabled = settings.enabledProviders
-        if settings.lyricsSourcePriorityEnabled {
-            return settings.lyricsSourcePriorityOrder.filter { enabled.contains($0) }
-        }
-        return LyricsProviderID.allCases.filter { $0 != .local && enabled.contains($0) }
-    }
-
-    private func removeCurrentTrackFromBlockLists() {
-        guard let track = playback.track else { return }
-        settings.noSearchingTrackIDs.remove(track.id)
-        if let album = track.album {
-            settings.noSearchingAlbumNames.remove(album)
-        }
+        return [.qqMusic, .netease].filter { enabled.contains($0) }
     }
 
     private func localLyricsStorage() -> LocalLyricsStorage {
@@ -559,13 +684,18 @@ final class LyricShioriStore {
                 return
             }
 
-            if settings.connectFullScreenPlaying {
+            // The bridge is an additional producer, not the only reader. A
+            // restarted desktop app must immediately reuse lyrics that the
+            // extension has already cached instead of waiting for another POST.
+            if let shared = try sharedLyricsCache.loadDocument(for: track) {
+                useCachedLyrics(shared, for: track, persistLocal: true, syncShared: false)
                 return
             }
 
-            if let automatic = try sharedLyricsCache.loadAutomaticDocument(for: track) {
-                useCachedLyrics(automatic, for: track, persistLocal: true, syncShared: false)
-            }
+            // With the bridge connected, Full-Screen-Playing is the sole
+            // automatic external-lyrics requester. LyricShiori only waits for
+            // a future bridge update after both local cache layers miss.
+            if settings.connectFullScreenPlaying { return }
         } catch {
             lastError = error.localizedDescription
         }
@@ -573,6 +703,7 @@ final class LyricShioriStore {
 
     private func useCachedLyrics(_ document: LyricsDocument, for track: TrackIdentity, persistLocal: Bool, syncShared: Bool) {
         let copy = settings.filter.apply(to: LyricsContentNormalizer.removingLeadingMetadata(from: document, track: track))
+        applyDesktopLyricsColors(from: copy)
         currentLyrics = copy
         updateCurrentLine()
         syncDesktopLyricsWindow()
@@ -585,6 +716,15 @@ final class LyricShioriStore {
     }
 
     private func sharedLyricsCacheEntrySaved(_ entry: SharedLyricsCache.Entry) {
+        if entry.hidden == true {
+            guard playback.track?.id == entry.trackUri else { return }
+            currentLyrics = nil
+            currentLineIndex = nil
+            searchTask?.cancel()
+            activeSearchID = UUID()
+            syncDesktopLyricsWindow()
+            return
+        }
         if let cached = try? sharedLyricsCache.bestLocalPersistenceDocument(for: entry.trackUri) {
             persistLocalLyrics(cached.document, for: cached.track)
         }
@@ -620,7 +760,11 @@ final class LyricShioriStore {
 
     private func persistLocalLyrics(_ document: LyricsDocument, for track: TrackIdentity) {
         do {
-            _ = try localLyricsStorage().save(document, for: track)
+            var copy = document
+            if copy.desktopLyricsColors == nil {
+                copy.desktopLyricsColors = currentDesktopLyricsColors()
+            }
+            _ = try localLyricsStorage().save(copy, for: track)
         } catch {
             lastError = error.localizedDescription
         }
@@ -671,4 +815,29 @@ final class LyricShioriStore {
         return try? sharedLyricsCache.loadDocument(for: track, kind: .spotify)
     }
 
+}
+
+private extension Color {
+    var lrcxRGBAHex: String {
+        guard let color = NSColor(self).usingColorSpace(.sRGB) else { return "#FFFFFFFF" }
+        return String(
+            format: "#%02X%02X%02X%02X",
+            Int((color.redComponent * 255).rounded()),
+            Int((color.greenComponent * 255).rounded()),
+            Int((color.blueComponent * 255).rounded()),
+            Int((color.alphaComponent * 255).rounded())
+        )
+    }
+
+    init?(lrcxRGBAHex value: String) {
+        let hex = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard hex.count == 6 || hex.count == 8,
+              let encoded = UInt64(hex, radix: 16) else { return nil }
+        let alpha = hex.count == 8 ? Double(encoded & 0xFF) / 255 : 1
+        let red = Double((encoded >> (hex.count == 8 ? 24 : 16)) & 0xFF) / 255
+        let green = Double((encoded >> (hex.count == 8 ? 16 : 8)) & 0xFF) / 255
+        let blue = Double((encoded >> (hex.count == 8 ? 8 : 0)) & 0xFF) / 255
+        self.init(.sRGB, red: red, green: green, blue: blue, opacity: alpha)
+    }
 }

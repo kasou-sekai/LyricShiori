@@ -9,59 +9,36 @@ final class AppSettings {
     @ObservationIgnored private var isLoading = false
 
     var desktopLyricsEnabled: Bool = true { didSet { save(desktopLyricsEnabled, Keys.desktopLyricsEnabled) } }
-    var desktopLyricsEnableFurigana: Bool = false { didSet { save(desktopLyricsEnableFurigana, Keys.desktopLyricsEnableFurigana) } }
-    var desktopLyricsFontName: String = "" { didSet { save(desktopLyricsFontName, Keys.desktopLyricsFontName) } }
     var desktopLyricsFontSize: Double = 24 { didSet { save(desktopLyricsFontSize, Keys.desktopLyricsFontSize) } }
-    var desktopLyricsInsetBottom: Double = 20
-    var desktopLyricsInsetBottomEnabled: Bool = true
     var desktopLyricsPreviousLineCount: Int = 0 { didSet { save(desktopLyricsPreviousLineCount, Keys.desktopLyricsPreviousLineCount) } }
     var desktopLyricsNextLineCount: Int = 1 { didSet { save(desktopLyricsNextLineCount, Keys.desktopLyricsNextLineCount) } }
     var desktopLyricsAlignment: DesktopLyricsAlignment = .center { didSet { save(desktopLyricsAlignment.rawValue, Keys.desktopLyricsAlignment) } }
     var desktopLyricsXPositionFactor: Double = 0.5 { didSet { save(desktopLyricsXPositionFactor, Keys.desktopLyricsXPositionFactor) } }
     var desktopLyricsYPositionFactor: Double = 0.9 { didSet { save(desktopLyricsYPositionFactor, Keys.desktopLyricsYPositionFactor) } }
+    var desktopLyricsColorPreset: DesktopLyricsColorPreset = .automatic { didSet { save(desktopLyricsColorPreset.rawValue, Keys.desktopLyricsColorPreset) } }
     var desktopLyricsColor: Color = .white { didSet { saveColor(desktopLyricsColor, Keys.desktopLyricsColor) } }
     var desktopLyricsProgressColor: Color = Color(red: 0.20, green: 1.00, blue: 0.87) { didSet { saveColor(desktopLyricsProgressColor, Keys.desktopLyricsProgressColor) } }
     var desktopLyricsShadowColor: Color = Color(red: 0.00, green: 1.00, blue: 0.83) { didSet { saveColor(desktopLyricsShadowColor, Keys.desktopLyricsShadowColor) } }
-    var desktopLyricsBackgroundColor: Color = .black.opacity(0.60) { didSet { saveColor(desktopLyricsBackgroundColor, Keys.desktopLyricsBackgroundColor) } }
-    var desktopLyricsOneLineMode: Bool = false { didSet { save(desktopLyricsOneLineMode, Keys.desktopLyricsOneLineMode) } }
     var desktopLyricsDraggable: Bool = true { didSet { save(desktopLyricsDraggable, Keys.desktopLyricsDraggable) } }
 
     var menuBarLyricsEnabled: Bool = true { didSet { save(menuBarLyricsEnabled, Keys.menuBarLyricsEnabled) } }
-    var combinedMenuBarLyrics: Bool = false { didSet { save(combinedMenuBarLyrics, Keys.combinedMenuBarLyrics) } }
-    var hideMenuBarItems: Bool = false { didSet { save(hideMenuBarItems, Keys.hideMenuBarItems) } }
-    var showLyricsWindow: Bool = false
 
     var disableLyricsWhenPaused: Bool = true { didSet { save(disableLyricsWhenPaused, Keys.disableLyricsWhenPaused) } }
     var disableLyricsWhenScreenShot: Bool = true { didSet { save(disableLyricsWhenScreenShot, Keys.disableLyricsWhenScreenShot) } }
     var hideLyricsWhenMousePassingBy: Bool = true { didSet { save(hideLyricsWhenMousePassingBy, Keys.hideLyricsWhenMousePassingBy) } }
-    var globalLyricsOffset: Int = 0 { didSet { save(globalLyricsOffset, Keys.globalLyricsOffset) } }
 
     var lyricsFilterEnabled: Bool = true { didSet { save(lyricsFilterEnabled, Keys.lyricsFilterEnabled) } }
     var lyricsSmartFilterEnabled: Bool = true { didSet { save(lyricsSmartFilterEnabled, Keys.lyricsSmartFilterEnabled) } }
     var lyricsFilterKeys: [String] = Defaults.lyricsFilterKeys { didSet { save(lyricsFilterKeys, Keys.lyricsFilterKeys) } }
 
-    var lyricsSourcePriorityEnabled: Bool = true { didSet { save(lyricsSourcePriorityEnabled, Keys.lyricsSourcePriorityEnabled) } }
-    var lyricsSourcePriorityOrder: [LyricsProviderID] = [.netease, .qqMusic] { didSet { save(lyricsSourcePriorityOrder.map(\.rawValue), Keys.lyricsSourcePriorityOrder) } }
-    var lyricsPriorityWindow: Double = 5 { didSet { save(lyricsPriorityWindow, Keys.lyricsPriorityWindow) } }
-    var strictSearchEnabled: Bool = false { didSet { save(strictSearchEnabled, Keys.strictSearchEnabled) } }
-    var preferBilingualLyrics: Bool = Locale.preferredLanguages.first?.hasPrefix("zh") == true { didSet { save(preferBilingualLyrics, Keys.preferBilingualLyrics) } }
     var connectFullScreenPlaying: Bool = true { didSet { save(connectFullScreenPlaying, Keys.connectFullScreenPlaying) } }
 
     var loadLyricsBesideTrack: Bool = true { didSet { save(loadLyricsBesideTrack, Keys.loadLyricsBesideTrack) } }
     var useCustomLyricsSavingPath: Bool = false { didSet { save(useCustomLyricsSavingPath ? 1 : 0, Keys.lyricsSavingPathPopUpIndex) } }
     var customLyricsSavingPathBookmark: Data? { didSet { saveOptionalData(customLyricsSavingPathBookmark, Keys.lyricsCustomSavingPathBookmark) } }
 
-    var preferredPlayer: PlayerKind = .spotify
     var enabledProviders: Set<LyricsProviderID> = [.netease, .qqMusic] { didSet { save(enabledProviders.map(\.rawValue).sorted(), Keys.enabledProviders) } }
     var noSearchingTrackIDs: Set<String> = [] { didSet { save(Array(noSearchingTrackIDs).sorted(), Keys.noSearchingTrackIDs) } }
-    var noSearchingAlbumNames: Set<String> = [] { didSet { save(Array(noSearchingAlbumNames).sorted(), Keys.noSearchingAlbumNames) } }
-    var nowPlayingBundleAllowList: [String] = [] { didSet { save(nowPlayingBundleAllowList, Keys.nowPlayingBundleAllowList) } }
-
-    var lyricsWindowFontName: String = "Helvetica" { didSet { save(lyricsWindowFontName, Keys.lyricsWindowFontName) } }
-    var lyricsWindowFontSize: Double = 13 { didSet { save(lyricsWindowFontSize, Keys.lyricsWindowFontSize) } }
-    var lyricsWindowTextColor: Color = Color(white: 0.75) { didSet { saveColor(lyricsWindowTextColor, Keys.lyricsWindowTextColor) } }
-    var lyricsWindowHighlightColor: Color = Color(red: 0.89, green: 1.00, blue: 0.80) { didSet { saveColor(lyricsWindowHighlightColor, Keys.lyricsWindowHighlightColor) } }
-
     var chineseConversionMode: ChineseConversionMode = .disabled { didSet { save(chineseConversionMode.rawValue, Keys.chineseConversionMode) } }
 
     init(defaults: UserDefaults = .standard) {
@@ -101,37 +78,35 @@ final class AppSettings {
 
     private func load() {
         desktopLyricsEnabled = bool(Keys.desktopLyricsEnabled, default: desktopLyricsEnabled)
-        desktopLyricsEnableFurigana = bool(Keys.desktopLyricsEnableFurigana, default: desktopLyricsEnableFurigana)
-        desktopLyricsFontName = string(Keys.desktopLyricsFontName, default: desktopLyricsFontName)
         desktopLyricsFontSize = double(Keys.desktopLyricsFontSize, default: desktopLyricsFontSize)
         desktopLyricsPreviousLineCount = min(max(integer(Keys.desktopLyricsPreviousLineCount, default: desktopLyricsPreviousLineCount), 0), 3)
         desktopLyricsNextLineCount = min(max(integer(Keys.desktopLyricsNextLineCount, default: desktopLyricsNextLineCount), 0), 3)
         desktopLyricsAlignment = DesktopLyricsAlignment(rawValue: string(Keys.desktopLyricsAlignment, default: desktopLyricsAlignment.rawValue)) ?? .center
         desktopLyricsXPositionFactor = double(Keys.desktopLyricsXPositionFactor, default: desktopLyricsXPositionFactor)
         desktopLyricsYPositionFactor = double(Keys.desktopLyricsYPositionFactor, default: desktopLyricsYPositionFactor)
+        if defaults.object(forKey: Keys.desktopLyricsColorPreset) != nil {
+            desktopLyricsColorPreset = DesktopLyricsColorPreset(
+                rawValue: string(Keys.desktopLyricsColorPreset, default: desktopLyricsColorPreset.rawValue)
+            ) ?? .automatic
+        } else if defaults.data(forKey: Keys.desktopLyricsColor) != nil ||
+                    defaults.data(forKey: Keys.desktopLyricsProgressColor) != nil ||
+                    defaults.data(forKey: Keys.desktopLyricsShadowColor) != nil {
+            // Keep a person's existing hand-picked colours when they upgrade.
+            desktopLyricsColorPreset = .custom
+        }
         desktopLyricsColor = color(Keys.desktopLyricsColor, default: desktopLyricsColor)
         desktopLyricsProgressColor = color(Keys.desktopLyricsProgressColor, default: desktopLyricsProgressColor)
         desktopLyricsShadowColor = color(Keys.desktopLyricsShadowColor, default: desktopLyricsShadowColor)
-        desktopLyricsBackgroundColor = color(Keys.desktopLyricsBackgroundColor, default: desktopLyricsBackgroundColor)
-        desktopLyricsOneLineMode = bool(Keys.desktopLyricsOneLineMode, default: desktopLyricsOneLineMode)
         desktopLyricsDraggable = bool(Keys.desktopLyricsDraggable, default: desktopLyricsDraggable)
 
         menuBarLyricsEnabled = bool(Keys.menuBarLyricsEnabled, default: menuBarLyricsEnabled)
-        combinedMenuBarLyrics = bool(Keys.combinedMenuBarLyrics, default: combinedMenuBarLyrics)
-        hideMenuBarItems = bool(Keys.hideMenuBarItems, default: hideMenuBarItems)
         disableLyricsWhenPaused = bool(Keys.disableLyricsWhenPaused, default: disableLyricsWhenPaused)
         disableLyricsWhenScreenShot = bool(Keys.disableLyricsWhenScreenShot, default: disableLyricsWhenScreenShot)
         hideLyricsWhenMousePassingBy = bool(Keys.hideLyricsWhenMousePassingBy, default: hideLyricsWhenMousePassingBy)
-        globalLyricsOffset = integer(Keys.globalLyricsOffset, default: globalLyricsOffset)
 
         lyricsFilterEnabled = bool(Keys.lyricsFilterEnabled, default: lyricsFilterEnabled)
         lyricsSmartFilterEnabled = bool(Keys.lyricsSmartFilterEnabled, default: lyricsSmartFilterEnabled)
         lyricsFilterKeys = stringArray(Keys.lyricsFilterKeys, default: lyricsFilterKeys)
-        lyricsSourcePriorityEnabled = bool(Keys.lyricsSourcePriorityEnabled, default: lyricsSourcePriorityEnabled)
-        lyricsSourcePriorityOrder = providerArray(Keys.lyricsSourcePriorityOrder, default: lyricsSourcePriorityOrder)
-        lyricsPriorityWindow = double(Keys.lyricsPriorityWindow, default: lyricsPriorityWindow)
-        strictSearchEnabled = bool(Keys.strictSearchEnabled, default: strictSearchEnabled)
-        preferBilingualLyrics = bool(Keys.preferBilingualLyrics, default: preferBilingualLyrics)
         connectFullScreenPlaying = bool(Keys.connectFullScreenPlaying, default: connectFullScreenPlaying)
 
         loadLyricsBesideTrack = bool(Keys.loadLyricsBesideTrack, default: loadLyricsBesideTrack)
@@ -140,13 +115,6 @@ final class AppSettings {
 
         enabledProviders = Set(providerArray(Keys.enabledProviders, default: Array(enabledProviders)))
         noSearchingTrackIDs = Set(stringArray(Keys.noSearchingTrackIDs, default: Array(noSearchingTrackIDs)))
-        noSearchingAlbumNames = Set(stringArray(Keys.noSearchingAlbumNames, default: Array(noSearchingAlbumNames)))
-        nowPlayingBundleAllowList = stringArray(Keys.nowPlayingBundleAllowList, default: nowPlayingBundleAllowList)
-
-        lyricsWindowFontName = string(Keys.lyricsWindowFontName, default: lyricsWindowFontName)
-        lyricsWindowFontSize = double(Keys.lyricsWindowFontSize, default: lyricsWindowFontSize)
-        lyricsWindowTextColor = color(Keys.lyricsWindowTextColor, default: lyricsWindowTextColor)
-        lyricsWindowHighlightColor = color(Keys.lyricsWindowHighlightColor, default: lyricsWindowHighlightColor)
         chineseConversionMode = ChineseConversionMode(rawValue: string(Keys.chineseConversionMode, default: chineseConversionMode.rawValue)) ?? .disabled
     }
 
@@ -278,6 +246,31 @@ enum DesktopLyricsAlignment: String, CaseIterable, Identifiable {
     }
 }
 
+enum DesktopLyricsColorPreset: String, CaseIterable, Identifiable {
+    /// Samples the album art and selects the closest readable preset.
+    case automatic = "Automatic"
+    case aurora = "Aurora"
+    case orchid = "Orchid"
+    case meadow = "Meadow"
+    case sunset = "Sunset"
+    case rose = "Rose"
+    case custom = "Custom"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .automatic: "Match album cover"
+        case .aurora: "Aurora"
+        case .orchid: "Orchid"
+        case .meadow: "Meadow"
+        case .sunset: "Sunset"
+        case .rose: "Rose"
+        case .custom: "Custom"
+        }
+    }
+}
+
 enum Defaults {
     static let defaultLyricsDirectoryName = "LyricShiori"
     static let legacyLyricsDirectoryName = "LyricsX"
@@ -296,37 +289,26 @@ enum Defaults {
 
 private enum Keys {
     static let desktopLyricsEnabled = "DesktopLyricsEnabled"
-    static let desktopLyricsEnableFurigana = "DesktopLyricsEnableFurigana"
-    static let desktopLyricsFontName = "DesktopLyricsFontName"
     static let desktopLyricsFontSize = "DesktopLyricsFontSize"
     static let desktopLyricsPreviousLineCount = "DesktopLyricsPreviousLineCount"
     static let desktopLyricsNextLineCount = "DesktopLyricsNextLineCount"
     static let desktopLyricsAlignment = "DesktopLyricsAlignment"
     static let desktopLyricsXPositionFactor = "DesktopLyricsXPositionFactor"
     static let desktopLyricsYPositionFactor = "DesktopLyricsYPositionFactor"
+    static let desktopLyricsColorPreset = "DesktopLyricsColorPreset"
     static let desktopLyricsColor = "DesktopLyricsColor"
     static let desktopLyricsProgressColor = "DesktopLyricsProgressColor"
     static let desktopLyricsShadowColor = "DesktopLyricsShadowColor"
-    static let desktopLyricsBackgroundColor = "DesktopLyricsBackgroundColor"
-    static let desktopLyricsOneLineMode = "DesktopLyricsOneLineMode"
     static let desktopLyricsDraggable = "DesktopLyricsDraggable"
 
     static let menuBarLyricsEnabled = "MenuBarLyricsEnabled"
-    static let combinedMenuBarLyrics = "CombinedMenubarLyrics"
-    static let hideMenuBarItems = "HideMenuBarItems"
     static let disableLyricsWhenPaused = "DisableLyricsWhenPaused"
     static let disableLyricsWhenScreenShot = "DisableLyricsWhenSreenShot"
     static let hideLyricsWhenMousePassingBy = "HideLyricsWhenMousePassingBy"
-    static let globalLyricsOffset = "GlobalLyricsOffset"
 
     static let lyricsFilterEnabled = "LyricsFilterEnabled"
     static let lyricsSmartFilterEnabled = "LyricsSmartFilterEnabled"
     static let lyricsFilterKeys = "LyricsFilterKeys"
-    static let lyricsSourcePriorityEnabled = "LyricsSourcePriorityEnabled"
-    static let lyricsSourcePriorityOrder = "LyricsSourcePriorityOrder"
-    static let lyricsPriorityWindow = "LyricsPriorityWindow"
-    static let strictSearchEnabled = "StrictSearchEnabled"
-    static let preferBilingualLyrics = "PreferBilingualLyrics"
     static let connectFullScreenPlaying = "ConnectFullScreenPlaying"
 
     static let loadLyricsBesideTrack = "LoadLyricsBesideTrack"
@@ -335,12 +317,5 @@ private enum Keys {
 
     static let enabledProviders = "EnabledProviders"
     static let noSearchingTrackIDs = "NoSearchingTrackIds"
-    static let noSearchingAlbumNames = "NoSearchingAlbumNames"
-    static let nowPlayingBundleAllowList = "SystemWideNowPlayingAppList"
-
-    static let lyricsWindowFontName = "LyricsWindowFontName"
-    static let lyricsWindowFontSize = "LyricsWindowFontSize"
-    static let lyricsWindowTextColor = "LyricsWindowTextColor"
-    static let lyricsWindowHighlightColor = "LyricsWindowHighlightColor"
     static let chineseConversionMode = "ChineseConversionMode"
 }

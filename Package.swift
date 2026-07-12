@@ -20,7 +20,10 @@ let package = Package(
                 .product(name: "LyricsKit", package: "LyricsKit"),
             ],
             path: "Sources/LyricShiori",
-            exclude: ["Supporting/Info.plist"]
+            exclude: ["Supporting/Info.plist"],
+            resources: [
+                .copy("Resources/emoji-bookmark-template.png"),
+            ]
         ),
     ]
 )

@@ -70,6 +70,8 @@ struct LyricsDocument: Identifiable, Equatable {
     var localURL: URL?
     var needsPersist: Bool
     var selectionState: LyricsSelectionState = .automaticSearch(cachedWithoutPlugin: false)
+    /// Optional per-lyric display data persisted in the LRCX `desktopLyricsColors` field.
+    var desktopLyricsColors: DesktopLyricsColors? = nil
 
     var adjustedDelay: TimeInterval {
         TimeInterval(offsetMilliseconds) / 1000
@@ -105,6 +107,15 @@ struct LyricsDocument: Identifiable, Equatable {
         return String(format: "%02d:%02d.%02d", minutes, seconds, centiseconds)
     }
 
+}
+
+struct DesktopLyricsColors: Codable, Equatable {
+    /// The selected setting, for example `Automatic`, `Aurora`, or `Custom`.
+    var preset: String?
+    /// RGBA hex values are platform-neutral so the shared lyrics bridge can return them too.
+    var unplayedColor: String
+    var playedColor: String
+    var outlineColor: String
 }
 
 struct LyricsSelectionState: Equatable, Codable {

@@ -33,6 +33,7 @@ struct LyricsCacheFile: Codable {
     var source: LyricsCacheSource
     var sourceName: String?
     var offsetMilliseconds: Int
+    var desktopLyricsColors: DesktopLyricsColors?
     var lines: [Line]
 
     init(document: LyricsDocument, track: TrackIdentity?) {
@@ -50,6 +51,7 @@ struct LyricsCacheFile: Codable {
         source = document.selectionState.cacheSource
         sourceName = document.sourceName
         offsetMilliseconds = document.offsetMilliseconds
+        desktopLyricsColors = document.desktopLyricsColors
         lines = document.lines.map { line in
             Line(
                 startMilliseconds: Int((line.position * 1000).rounded()),
@@ -117,7 +119,8 @@ struct LyricsCacheFile: Codable {
             offsetMilliseconds: file.offsetMilliseconds,
             sourceName: file.sourceName ?? sourceName,
             localURL: localURL,
-            needsPersist: false
+            needsPersist: false,
+            desktopLyricsColors: file.desktopLyricsColors
         )
         document.selectionState = .from(cacheSource: file.source)
         return document
@@ -153,18 +156,51 @@ struct LocalLyricsStorage: LyricsStorageService {
         let accessed = beginSecurityScopeIfNeeded()
         defer { endSecurityScopeIfNeeded(accessed) }
 
-        for url in candidateURLs(for: track, includeBesideTrack: includeBesideTrack) where FileManager.default.fileExists(atPath: url.path) {
-            let content = try String(contentsOf: url, encoding: .utf8)
-            if let decoded = try? LyricsCacheFile.decode(content, sourceName: LyricsProviderID.local.rawValue, localURL: url, track: track) {
-                let document = LyricsContentNormalizer.removingLeadingMetadata(from: decoded, track: track)
-                if document.lines.count != decoded.lines.count {
-                    try LyricsCacheFile.encodedString(document: document, track: track).write(to: url, atomically: true, encoding: .utf8)
-                    LyricsBridgeTrace.record(event: "local.lrcx.cleaned-leading-metadata", document: document, track: track, detail: url.lastPathComponent)
-                }
-                guard isMetadataCompatible(document, with: track) else { continue }
-                LyricsBridgeTrace.record(event: "local.lrcx.loaded", document: document, track: track, detail: url.lastPathComponent)
+        let candidates = candidateURLs(for: track, includeBesideTrack: includeBesideTrack)
+        for url in candidates where FileManager.default.fileExists(atPath: url.path) {
+            if let document = try loadDocument(at: url, for: track) {
                 return document
             }
+        }
+
+        // Spotify can shorten a multi-artist credit while an existing LRCX has
+        // the full credit in its filename. The embedded Spotify track ID is the
+        // durable identity, so use it as a fallback instead of missing lyrics.
+        if let url = try lrcxURL(matchingTrackID: track.id, excluding: Set(candidates)),
+           let document = try loadDocument(at: url, for: track) {
+            LyricsBridgeTrace.record(event: "local.lrcx.matched-track-id", document: document, track: track, detail: url.lastPathComponent)
+            return document
+        }
+        return nil
+    }
+
+    private func loadDocument(at url: URL, for track: TrackIdentity) throws -> LyricsDocument? {
+        let content = try String(contentsOf: url, encoding: .utf8)
+        if let decoded = try? LyricsCacheFile.decode(content, sourceName: LyricsProviderID.local.rawValue, localURL: url, track: track) {
+            let document = LyricsContentNormalizer.removingLeadingMetadata(from: decoded, track: track)
+            if document.lines.count != decoded.lines.count {
+                try LyricsCacheFile.encodedString(document: document, track: track).write(to: url, atomically: true, encoding: .utf8)
+                LyricsBridgeTrace.record(event: "local.lrcx.cleaned-leading-metadata", document: document, track: track, detail: url.lastPathComponent)
+            }
+            guard isMetadataCompatible(document, with: track) else { return nil }
+            LyricsBridgeTrace.record(event: "local.lrcx.loaded", document: document, track: track, detail: url.lastPathComponent)
+            return document
+        }
+        return nil
+    }
+
+    private func lrcxURL(matchingTrackID trackID: String, excluding excluded: Set<URL>) throws -> URL? {
+        guard !trackID.isEmpty, FileManager.default.fileExists(atPath: baseDirectory.path) else { return nil }
+        let urls = try FileManager.default.contentsOfDirectory(
+            at: baseDirectory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )
+        for url in urls where url.pathExtension.lowercased() == "lrcx" && !excluded.contains(url) {
+            guard let content = try? String(contentsOf: url, encoding: .utf8),
+                  let file = try? JSONDecoder().decode(LyricsCacheFile.self, from: Data(content.utf8)),
+                  file.track?.id == trackID else { continue }
+            return url
         }
         return nil
     }

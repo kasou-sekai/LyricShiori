@@ -27,6 +27,8 @@ final class SharedLyricsCache: @unchecked Sendable {
         var cachedWithoutPlugin: Bool?
         var offsetMilliseconds: Int?
         var timingOffsetApplied: Bool?
+        var hidden: Bool?
+        var desktopLyricsColors: DesktopLyricsColors? = nil
         var debug: AnyCodableValue?
     }
 
@@ -159,6 +161,8 @@ final class SharedLyricsCache: @unchecked Sendable {
                     cachedWithoutPlugin: cachedWithoutPlugin,
                     offsetMilliseconds: document.offsetMilliseconds,
                     timingOffsetApplied: false,
+                    hidden: false,
+                    desktopLyricsColors: document.desktopLyricsColors,
                     debug: nil
                 )
             )
@@ -180,6 +184,38 @@ final class SharedLyricsCache: @unchecked Sendable {
         return entry
     }
 
+    func hideLyrics(for track: TrackIdentity) throws {
+        guard isSpotifyTrack(track.id) else { return }
+        let now = nowMilliseconds()
+        for kind in Kind.allCases {
+            try save(
+                Entry(
+                    kind: kind,
+                    trackUri: track.id,
+                    cachedAt: now,
+                    expiresAt: now + readyTTL,
+                    lines: [],
+                    metadata: Metadata(
+                        title: track.title,
+                        artist: track.artist,
+                        album: track.album,
+                        languageCode: nil,
+                        translationLanguages: []
+                    ),
+                    cacheSource: .manual,
+                    source: .lyricShiori,
+                    sourceName: "LyricShiori",
+                    isManualSelection: true,
+                    cachedWithoutPlugin: false,
+                    offsetMilliseconds: 0,
+                    timingOffsetApplied: false,
+                    hidden: true,
+                    debug: nil
+                )
+            )
+        }
+    }
+
     func save(_ entry: Entry) throws {
         lock.lock()
         defer { lock.unlock() }
@@ -191,6 +227,12 @@ final class SharedLyricsCache: @unchecked Sendable {
            effectiveCacheSource(for: entry) != .manual {
             try persist(store)
             LyricsBridgeTrace.record(event: "cache.rejected.manual-preserved", entry: entry)
+            return
+        }
+        // Retried bridge POSTs carry the same cache timestamp. They are not a
+        // new lyric selection, so avoid re-persisting the cache and notifying
+        // the UI to reload the current .lrcx file.
+        if store.entries[key]?.cachedAt == entry.cachedAt {
             return
         }
         store.entries[key] = entry
@@ -218,6 +260,9 @@ final class SharedLyricsCache: @unchecked Sendable {
         let candidates = [localEntry, cachedEntry]
             .compactMap { $0 }
             .filter { isSharedBridgePreferred($0) }
+        if let hidden = candidates.first(where: { $0.hidden == true }) {
+            return try encoder.encode(hidden)
+        }
         guard let best = bestLocalPersistenceEntry(from: candidates) else { return nil }
         return try encoder.encode(best)
     }
@@ -305,7 +350,8 @@ final class SharedLyricsCache: @unchecked Sendable {
             offsetMilliseconds: entry.timingOffsetApplied == true ? 0 : (entry.offsetMilliseconds ?? 0),
             sourceName: entry.sourceName ?? defaultSourceName(for: entry),
             localURL: url,
-            needsPersist: false
+            needsPersist: false,
+            desktopLyricsColors: entry.desktopLyricsColors
         )
         document.selectionState = selectionState(from: entry)
         document.metadata.languageCode = LyricsLanguageRecognizer.recognize(in: lines.map(\.content).joined(separator: "\n"))
@@ -334,6 +380,8 @@ final class SharedLyricsCache: @unchecked Sendable {
             cachedWithoutPlugin: document.selectionState.cachedWithoutPlugin,
             offsetMilliseconds: document.offsetMilliseconds,
             timingOffsetApplied: false,
+            hidden: false,
+            desktopLyricsColors: document.desktopLyricsColors,
             debug: nil
         )
     }
