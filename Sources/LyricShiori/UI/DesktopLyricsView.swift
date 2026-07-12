@@ -23,36 +23,47 @@ struct DesktopLyricsView: View {
         let palette = store.desktopLyricsPalette()
         let fontSize = store.settings.desktopLyricsFontSize
         let alignment = store.settings.desktopLyricsAlignment
-        let previousLineCount = store.settings.desktopLyricsPreviousLineCount
-        let nextLineCount = store.settings.desktopLyricsNextLineCount
-        let lineHeight = max(fontSize * 1.58, 30)
+        let lineCount = max(1, lines.count)
         // The renderer's frame is intentionally taller than its glyphs for
         // karaoke effects. The movement slot should track the glyphs instead,
         // otherwise two visible lines look far apart even with a zero Stack
         // spacing. Frames may overlap; their text does not.
-        let slotHeight = max(fontSize * 1.24, 28)
-        let contentHeight = lineHeight + slotHeight * Double(previousLineCount + nextLineCount)
+        let slotHeight = DesktopLyricsLayout.slotHeight(for: fontSize)
+        let contentHeight = DesktopLyricsLayout.glyphStackHeight(for: fontSize, lineCount: lineCount)
+        let verticalPadding = DesktopLyricsLayout.verticalPadding(for: fontSize)
 
         // Use a fixed vertical slot for each relative lyric position. SwiftUI
         // animates this parent transform for both native Text and the AppKit
         // karaoke view, avoiding the layout snap that affected CJK karaoke lines.
         return ZStack(alignment: .top) {
-            ForEach(lines) { line in
+            ForEach(Array(lines.enumerated()), id: \.element.id) { offset, line in
                 DesktopLyricLineView(
                     line: line,
                     palette: palette,
                     fontSize: fontSize,
                     alignment: alignment
                 )
-                .id(line.id)
                 .frame(maxWidth: .infinity, alignment: alignment.frameAlignment)
-                .offset(y: Double(line.distanceFromActive + previousLineCount) * slotHeight)
+                .offset(y: Double(offset) * slotHeight)
             }
         }
         .frame(maxWidth: .infinity, minHeight: contentHeight, alignment: .top)
         .padding(.horizontal, max(8, fontSize * 0.35))
-        .padding(.vertical, max(4, fontSize * 0.16))
+        .padding(.vertical, verticalPadding)
         .frame(maxWidth: .infinity)
+        .overlay {
+            if store.isDesktopLyricsDragging {
+                let shape = RoundedRectangle(
+                    cornerRadius: max(8, fontSize * 0.35),
+                    style: .continuous
+                )
+                shape
+                    .stroke(Color.black.opacity(0.78), lineWidth: 3)
+                    .overlay {
+                        shape.stroke(Color.white.opacity(0.9), lineWidth: 1)
+                    }
+            }
+        }
         .opacity(store.settings.hideLyricsWhenMousePassingBy && mouseOverLyrics ? 0 : 1)
         // The retained views keep their identity, so the upcoming line glides into
         // the active position instead of being replaced in place.

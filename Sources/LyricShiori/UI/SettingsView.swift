@@ -229,11 +229,12 @@ private struct DisplaySettingsView: View {
             Section("Placement") {
                 Stepper("Previous lines: \(store.settings.desktopLyricsPreviousLineCount)", value: $store.settings.desktopLyricsPreviousLineCount, in: 0...3)
                 Stepper("Next lines: \(store.settings.desktopLyricsNextLineCount)", value: $store.settings.desktopLyricsNextLineCount, in: 0...3)
-                Slider(value: $store.settings.desktopLyricsXPositionFactor, in: 0...1) {
-                    Text("Horizontal position")
-                }
-                Slider(value: $store.settings.desktopLyricsYPositionFactor, in: 0...1) {
-                    Text("Vertical position")
+                Slider(value: $store.settings.desktopLyricsWidth, in: 280...1_000, step: 10) {
+                    Text("Lyrics width: \(Int(store.settings.desktopLyricsWidth)) pt")
+                } minimumValueLabel: {
+                    Text("280")
+                } maximumValueLabel: {
+                    Text("1000")
                 }
             }
 
@@ -250,6 +251,18 @@ private struct DisplaySettingsView: View {
         }
         .onChange(of: store.settings.desktopLyricsShadowColor) { _, _ in
             store.persistDesktopLyricsColors()
+        }
+        .onChange(of: store.settings.desktopLyricsFontSize) { _, _ in
+            store.syncDesktopLyricsWindow()
+        }
+        .onChange(of: store.settings.desktopLyricsWidth) { _, _ in
+            store.syncDesktopLyricsWindow()
+        }
+        .onChange(of: store.settings.desktopLyricsPreviousLineCount) { _, _ in
+            store.syncDesktopLyricsWindow()
+        }
+        .onChange(of: store.settings.desktopLyricsNextLineCount) { _, _ in
+            store.syncDesktopLyricsWindow()
         }
     }
 }

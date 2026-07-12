@@ -68,6 +68,7 @@ final class LyricShioriStore {
     var lastError: String?
     var isSearching = false
     var spotifyAccessMessage = "Not requested"
+    var isDesktopLyricsDragging = false
 
     @ObservationIgnored private let conversion: ChineseConversionService
     @ObservationIgnored private let sharedLyricsCache: SharedLyricsCache

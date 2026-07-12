@@ -24,8 +24,6 @@ final class DesktopLyricsWindowController {
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         panel.store = store
-        panel.minSize = NSSize(width: 280, height: 72)
-        panel.maxSize = NSSize(width: 520, height: 320)
     }
 
     func show() {
@@ -58,21 +56,36 @@ final class DesktopLyricsWindowController {
         let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first
         let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
         let fontSize = store.settings.desktopLyricsFontSize
-        // Keep the panel's footprint fixed at the beginning and end of a song.
-        // Basing this on the currently available rows makes the window shrink
-        // when the final upcoming line disappears, which visibly moves the
-        // active lyric even though its in-view anchor has not changed.
-        let lineCount = max(
-            1,
-            1 + store.settings.desktopLyricsPreviousLineCount + store.settings.desktopLyricsNextLineCount
+        let lineCount = max(1, store.desktopLyricsDisplayLines().count)
+        let maxWidth = max(280, screenFrame.width - 64)
+        let maxHeight = max(1, screenFrame.height - 64)
+        let width = min(store.settings.desktopLyricsWidth, maxWidth)
+        let height = min(
+            DesktopLyricsLayout.totalHeight(for: fontSize, lineCount: lineCount),
+            maxHeight
         )
-        let maxWidth = min(520, max(280, screenFrame.width - 64))
-        let maxHeight = min(320, max(96, screenFrame.height * 0.34))
-        let width = min(max(300, fontSize * 18.6), maxWidth)
-        let height = min(max(96, fontSize * (2.75 + Double(lineCount - 1) * 1.45)), maxHeight)
         let x = screenFrame.minX + screenFrame.width * store.settings.desktopLyricsXPositionFactor - width / 2
         let y = screenFrame.minY + screenFrame.height * (1 - store.settings.desktopLyricsYPositionFactor) - height / 2
         return NSRect(x: x, y: y, width: width, height: height)
+    }
+}
+
+enum DesktopLyricsLayout {
+    static func slotHeight(for fontSize: Double) -> Double {
+        max(fontSize * 1.24, 28)
+    }
+
+    static func glyphStackHeight(for fontSize: Double, lineCount: Int) -> Double {
+        let activeLineHeight = max(fontSize * 1.58, 30)
+        return activeLineHeight + slotHeight(for: fontSize) * Double(max(0, lineCount - 1))
+    }
+
+    static func verticalPadding(for fontSize: Double) -> Double {
+        max(4, fontSize * 0.16)
+    }
+
+    static func totalHeight(for fontSize: Double, lineCount: Int) -> Double {
+        glyphStackHeight(for: fontSize, lineCount: lineCount) + verticalPadding(for: fontSize) * 2
     }
 }
 
@@ -94,6 +107,7 @@ private final class DesktopLyricsPanel: NSPanel {
         }
         dragStartMouseLocation = NSEvent.mouseLocation
         dragStartFrame = frame
+        store?.isDesktopLyricsDragging = true
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -119,5 +133,7 @@ private final class DesktopLyricsPanel: NSPanel {
     override func mouseUp(with event: NSEvent) {
         dragStartMouseLocation = nil
         dragStartFrame = nil
+        store?.isDesktopLyricsDragging = false
+        store?.syncDesktopLyricsWindow()
     }
 }

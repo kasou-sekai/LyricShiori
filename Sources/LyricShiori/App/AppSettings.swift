@@ -10,6 +10,7 @@ final class AppSettings {
 
     var desktopLyricsEnabled: Bool = true { didSet { save(desktopLyricsEnabled, Keys.desktopLyricsEnabled) } }
     var desktopLyricsFontSize: Double = 24 { didSet { save(desktopLyricsFontSize, Keys.desktopLyricsFontSize) } }
+    var desktopLyricsWidth: Double = 450 { didSet { save(desktopLyricsWidth, Keys.desktopLyricsWidth) } }
     var desktopLyricsPreviousLineCount: Int = 0 { didSet { save(desktopLyricsPreviousLineCount, Keys.desktopLyricsPreviousLineCount) } }
     var desktopLyricsNextLineCount: Int = 1 { didSet { save(desktopLyricsNextLineCount, Keys.desktopLyricsNextLineCount) } }
     var desktopLyricsAlignment: DesktopLyricsAlignment = .center { didSet { save(desktopLyricsAlignment.rawValue, Keys.desktopLyricsAlignment) } }
@@ -80,6 +81,7 @@ final class AppSettings {
     private func load() {
         desktopLyricsEnabled = bool(Keys.desktopLyricsEnabled, default: desktopLyricsEnabled)
         desktopLyricsFontSize = double(Keys.desktopLyricsFontSize, default: desktopLyricsFontSize)
+        desktopLyricsWidth = min(max(double(Keys.desktopLyricsWidth, default: desktopLyricsWidth), 280), 1_000)
         desktopLyricsPreviousLineCount = min(max(integer(Keys.desktopLyricsPreviousLineCount, default: desktopLyricsPreviousLineCount), 0), 3)
         desktopLyricsNextLineCount = min(max(integer(Keys.desktopLyricsNextLineCount, default: desktopLyricsNextLineCount), 0), 3)
         desktopLyricsAlignment = DesktopLyricsAlignment(rawValue: string(Keys.desktopLyricsAlignment, default: desktopLyricsAlignment.rawValue)) ?? .center
@@ -292,6 +294,7 @@ enum Defaults {
 private enum Keys {
     static let desktopLyricsEnabled = "DesktopLyricsEnabled"
     static let desktopLyricsFontSize = "DesktopLyricsFontSize"
+    static let desktopLyricsWidth = "DesktopLyricsWidth"
     static let desktopLyricsPreviousLineCount = "DesktopLyricsPreviousLineCount"
     static let desktopLyricsNextLineCount = "DesktopLyricsNextLineCount"
     static let desktopLyricsAlignment = "DesktopLyricsAlignment"
