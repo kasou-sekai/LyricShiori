@@ -120,6 +120,14 @@ struct LyricsCandidateMatcher {
     }
 
     private func isArtistOrAlbumMatch(_ result: LyricsSearchResult) -> Bool {
+        let hasArtist = !request.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasAlbum = !(request.album?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        guard hasArtist || hasAlbum else {
+            // A title-only fallback has no artist metadata to validate against.
+            // Duration and (when available) the Spotify lyric reference still
+            // keep automatic matching appropriately constrained.
+            return true
+        }
         if isLooseTextMatch(result.artist, request.artist) {
             return true
         }

@@ -178,8 +178,20 @@ private struct DisplaySettingsView: View {
                     .onChange(of: store.settings.desktopLyricsEnabled) { _, _ in
                         store.syncDesktopLyricsWindow()
                     }
+                Toggle("Mouse click-through", isOn: $store.settings.desktopLyricsMousePassthrough)
+                    .onChange(of: store.settings.desktopLyricsMousePassthrough) { _, _ in
+                        store.syncDesktopLyricsWindow()
+                    }
                 Toggle("Allow dragging", isOn: $store.settings.desktopLyricsDraggable)
+                    .disabled(store.settings.desktopLyricsMousePassthrough)
+                    .onChange(of: store.settings.desktopLyricsDraggable) { _, _ in
+                        store.syncDesktopLyricsWindow()
+                    }
                 Toggle("Hide when the pointer passes over", isOn: $store.settings.hideLyricsWhenMousePassingBy)
+                    .disabled(store.settings.desktopLyricsMousePassthrough)
+                    .onChange(of: store.settings.hideLyricsWhenMousePassingBy) { _, _ in
+                        store.syncDesktopLyricsWindow()
+                    }
                 Toggle("Hide from screenshots", isOn: $store.settings.disableLyricsWhenScreenShot)
             }
 

@@ -229,6 +229,17 @@ final class SharedLyricsCache: @unchecked Sendable {
             LyricsBridgeTrace.record(event: "cache.rejected.manual-preserved", entry: entry)
             return
         }
+        if let existing = store.entries[key],
+           effectiveCacheSource(for: entry) != .manual,
+           compareLyricsQuality(existing.lines, entry.lines) > 0 {
+            // The plugin can publish an enhanced result first and then later
+            // replace the same cache kind with its plain Spotify fallback. Keep
+            // the richer entry so word timings are never downgraded to line-only
+            // lyrics by a late bridge update.
+            try persist(store)
+            LyricsBridgeTrace.record(event: "cache.rejected.quality-preserved", entry: entry)
+            return
+        }
         // Retried bridge POSTs carry the same cache timestamp. They are not a
         // new lyric selection, so avoid re-persisting the cache and notifying
         // the UI to reload the current .lrcx file.

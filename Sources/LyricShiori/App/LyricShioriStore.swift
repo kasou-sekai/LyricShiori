@@ -12,6 +12,7 @@ struct DesktopLyricsDisplayLine: Identifiable, Equatable {
     var lineStart: TimeInterval
     var lineEnd: TimeInterval?
     var playbackTime: TimeInterval
+    var isPlaying: Bool
     var isActive: Bool
     var distanceFromActive: Int
     var progress: Double
@@ -223,6 +224,9 @@ final class LyricShioriStore {
 
         isSearching = true
         defer { isSearching = false }
+        // Search failures from public lyric providers are common and transient.
+        // They should not interrupt a manual search with an alert.
+        lastError = nil
         searchResults = []
 
         // A manual search is a chooser, not an automatic decision. Ask each
@@ -234,30 +238,96 @@ final class LyricShioriStore {
             duration: duration,
             limit: acceptFirstResult ? 8 : 50
         )
-        var collected: [LyricsSearchResult] = []
-        let matcher = LyricsCandidateMatcher(
+        let mode: LyricsCandidateMatcher.Mode = acceptFirstResult ? .strictAutomatic : .rankedManual
+        let referenceDocument = spotifyReferenceDocument(matching: request)
+        var collected = await searchProviders(
             request: request,
-            referenceDocument: spotifyReferenceDocument(matching: request),
-            mode: acceptFirstResult ? .strictAutomatic : .rankedManual
+            matcher: LyricsCandidateMatcher(request: request, referenceDocument: referenceDocument, mode: mode),
+            searchID: searchID,
+            requiredTrackSignature: requiredTrackSignature
         )
+
+        // Metadata from streaming players often uses a character name, alias, or
+        // featured artist that the lyric service does not know. If the precise
+        // query produces nothing, retry the providers with the title alone.
+        if collected.isEmpty, !cleanTitle.isEmpty,
+           !Task.isCancelled,
+           isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) {
+            let broadRequest = ShioriLyricsSearchRequest(
+                title: cleanTitle,
+                artist: "",
+                album: nil,
+                duration: duration,
+                limit: request.limit
+            )
+            collected = await searchProviders(
+                request: broadRequest,
+                matcher: LyricsCandidateMatcher(request: broadRequest, referenceDocument: referenceDocument, mode: mode),
+                searchID: searchID,
+                requiredTrackSignature: requiredTrackSignature
+            )
+        }
+
+        guard !Task.isCancelled, isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) else { return }
+        searchResults = collected
+        if acceptFirstResult, shouldAcceptAutomaticSearchResult, let first = collected.first {
+            acceptLyrics(first.document, sourceName: first.provider.rawValue, isManualSelection: false)
+        }
+    }
+
+    /// Searches each configured provider without surfacing transient provider
+    /// errors. Each attempt gets a short backoff so rate limits and flaky
+    /// connections can recover before the broader title-only fallback is used.
+    private func searchProviders(
+        request: ShioriLyricsSearchRequest,
+        matcher: LyricsCandidateMatcher,
+        searchID: UUID?,
+        requiredTrackSignature: String?
+    ) async -> [LyricsSearchResult] {
+        var collected: [LyricsSearchResult] = []
+
         for providerID in orderedProviders() {
-            guard !Task.isCancelled, isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) else { return }
-            guard let service = lyricsServices[providerID] else { continue }
+            guard !Task.isCancelled,
+                  isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature),
+                  let service = lyricsServices[providerID] else {
+                return collected.sorted(by: matcher.sort)
+            }
+
+            let results = await searchWithRetry(service, request: request)
+                .compactMap { matcher.evaluate($0) }
+                .sorted(by: matcher.sort)
+            guard !Task.isCancelled, isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) else {
+                return collected.sorted(by: matcher.sort)
+            }
+
+            collected.append(contentsOf: results)
+            let sorted = collected.sorted(by: matcher.sort)
+            searchResults = sorted
+        }
+
+        return collected.sorted(by: matcher.sort)
+    }
+
+    private func searchWithRetry(
+        _ service: LyricsSearchService,
+        request: ShioriLyricsSearchRequest,
+        maximumAttempts: Int = 3
+    ) async -> [LyricsSearchResult] {
+        for attempt in 0..<maximumAttempts where !Task.isCancelled {
             do {
                 let results = try await service.search(request)
-                    .compactMap { matcher.evaluate($0) }
-                    .sorted(by: matcher.sort)
-                guard !Task.isCancelled, isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) else { return }
-                collected.append(contentsOf: results)
-                searchResults = collected.sorted(by: matcher.sort)
-                if acceptFirstResult, shouldAcceptAutomaticSearchResult, let first = results.first {
-                    acceptLyrics(first.document, sourceName: first.provider.rawValue, isManualSelection: false)
-                    return
+                if !results.isEmpty {
+                    return results
                 }
             } catch {
-                lastError = error.localizedDescription
+                // The next retry or provider fallback is intentionally silent.
+            }
+
+            if attempt + 1 < maximumAttempts {
+                try? await Task.sleep(for: .milliseconds(350 * (attempt + 1)))
             }
         }
+        return []
     }
 
     private func isCurrentSearch(_ searchID: UUID?, requiredTrackSignature: String?) -> Bool {
@@ -459,6 +529,7 @@ final class LyricShioriStore {
                     }
                     ?? playback.track?.duration,
                 playbackTime: playbackTime,
+                isPlaying: playback.status == .playing,
                 isActive: lineIndex == index,
                 distanceFromActive: lineIndex - index,
                 progress: lineIndex == index ? currentLineProgress() : (lineIndex < index ? 1 : 0)
@@ -546,8 +617,11 @@ final class LyricShioriStore {
 
     func setDesktopLyricsCenter(screenFrame: NSRect, center: NSPoint) {
         guard screenFrame.width > 0, screenFrame.height > 0 else { return }
-        let xFactor = min(max((center.x - screenFrame.minX) / screenFrame.width, 0), 1)
-        let yFactor = min(max(1 - ((center.y - screenFrame.minY) / screenFrame.height), 0), 1)
+        // Keep the exact dragged location, including positions over the Dock or
+        // partially outside the display. Clamping here made the panel jump back
+        // during the next playback refresh.
+        let xFactor = (center.x - screenFrame.minX) / screenFrame.width
+        let yFactor = 1 - ((center.y - screenFrame.minY) / screenFrame.height)
         settings.desktopLyricsXPositionFactor = xFactor
         settings.desktopLyricsYPositionFactor = yFactor
     }

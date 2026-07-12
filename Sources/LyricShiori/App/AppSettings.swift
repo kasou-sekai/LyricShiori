@@ -20,6 +20,7 @@ final class AppSettings {
     var desktopLyricsProgressColor: Color = Color(red: 0.20, green: 1.00, blue: 0.87) { didSet { saveColor(desktopLyricsProgressColor, Keys.desktopLyricsProgressColor) } }
     var desktopLyricsShadowColor: Color = Color(red: 0.00, green: 1.00, blue: 0.83) { didSet { saveColor(desktopLyricsShadowColor, Keys.desktopLyricsShadowColor) } }
     var desktopLyricsDraggable: Bool = true { didSet { save(desktopLyricsDraggable, Keys.desktopLyricsDraggable) } }
+    var desktopLyricsMousePassthrough: Bool = false { didSet { save(desktopLyricsMousePassthrough, Keys.desktopLyricsMousePassthrough) } }
 
     var menuBarLyricsEnabled: Bool = true { didSet { save(menuBarLyricsEnabled, Keys.menuBarLyricsEnabled) } }
 
@@ -98,6 +99,7 @@ final class AppSettings {
         desktopLyricsProgressColor = color(Keys.desktopLyricsProgressColor, default: desktopLyricsProgressColor)
         desktopLyricsShadowColor = color(Keys.desktopLyricsShadowColor, default: desktopLyricsShadowColor)
         desktopLyricsDraggable = bool(Keys.desktopLyricsDraggable, default: desktopLyricsDraggable)
+        desktopLyricsMousePassthrough = bool(Keys.desktopLyricsMousePassthrough, default: desktopLyricsMousePassthrough)
 
         menuBarLyricsEnabled = bool(Keys.menuBarLyricsEnabled, default: menuBarLyricsEnabled)
         disableLyricsWhenPaused = bool(Keys.disableLyricsWhenPaused, default: disableLyricsWhenPaused)
@@ -300,6 +302,7 @@ private enum Keys {
     static let desktopLyricsProgressColor = "DesktopLyricsProgressColor"
     static let desktopLyricsShadowColor = "DesktopLyricsShadowColor"
     static let desktopLyricsDraggable = "DesktopLyricsDraggable"
+    static let desktopLyricsMousePassthrough = "DesktopLyricsMousePassthrough"
 
     static let menuBarLyricsEnabled = "MenuBarLyricsEnabled"
     static let disableLyricsWhenPaused = "DisableLyricsWhenPaused"
