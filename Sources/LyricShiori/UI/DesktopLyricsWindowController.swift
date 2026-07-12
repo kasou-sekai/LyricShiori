@@ -27,34 +27,65 @@ final class DesktopLyricsWindowController {
     }
 
     func show() {
+        guard !panel.isVisible else { return }
         panel.orderFrontRegardless()
     }
 
     func hide() {
+        guard panel.isVisible else { return }
         panel.orderOut(nil)
     }
 
     func update() {
-        hostingController.rootView = DesktopLyricsView(store: store)
-        panel.isDraggable = store.settings.desktopLyricsDraggable
+        // The root view already observes `store`. Replacing it during each player
+        // refresh resets TimelineView and interrupts lyric animations.
+        let mousePassthrough = store.settings.desktopLyricsMousePassthrough
+        panel.isDraggable = store.settings.desktopLyricsDraggable && !mousePassthrough
         panel.sharingType = store.settings.disableLyricsWhenScreenShot ? .none : .readOnly
-        panel.ignoresMouseEvents = !store.settings.desktopLyricsDraggable && !store.settings.hideLyricsWhenMousePassingBy
-        panel.setFrame(frameForCurrentSettings(), display: true)
+        panel.ignoresMouseEvents = mousePassthrough
+            || (!store.settings.desktopLyricsDraggable && !store.settings.hideLyricsWhenMousePassingBy)
+        if !panel.isUserDragging {
+            let targetFrame = frameForCurrentSettings()
+            if panel.frame != targetFrame {
+                panel.setFrame(targetFrame, display: true)
+            }
+        }
     }
 
     private func frameForCurrentSettings() -> NSRect {
         let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first
-        let screenFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
+        let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
         let fontSize = store.settings.desktopLyricsFontSize
-        let hasSecondLine = !store.desktopLyricsLines().second.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let width = min(max(620, fontSize * 24), max(320, screenFrame.width - 48))
-        let lineCountFactor = hasSecondLine ? 3.35 : 2.35
-        let height = min(max(92, fontSize * lineCountFactor), max(92, screenFrame.height * 0.28))
+        let lineCount = max(1, store.desktopLyricsDisplayLines().count)
+        let maxWidth = max(280, screenFrame.width - 64)
+        let maxHeight = max(1, screenFrame.height - 64)
+        let width = min(store.settings.desktopLyricsWidth, maxWidth)
+        let height = min(
+            DesktopLyricsLayout.totalHeight(for: fontSize, lineCount: lineCount),
+            maxHeight
+        )
         let x = screenFrame.minX + screenFrame.width * store.settings.desktopLyricsXPositionFactor - width / 2
         let y = screenFrame.minY + screenFrame.height * (1 - store.settings.desktopLyricsYPositionFactor) - height / 2
-        let clampedX = x.clamped(to: screenFrame.minX ... max(screenFrame.minX, screenFrame.maxX - width))
-        let clampedY = y.clamped(to: screenFrame.minY ... max(screenFrame.minY, screenFrame.maxY - height))
-        return NSRect(x: clampedX, y: clampedY, width: width, height: height)
+        return NSRect(x: x, y: y, width: width, height: height)
+    }
+}
+
+enum DesktopLyricsLayout {
+    static func slotHeight(for fontSize: Double) -> Double {
+        max(fontSize * 1.24, 28)
+    }
+
+    static func glyphStackHeight(for fontSize: Double, lineCount: Int) -> Double {
+        let activeLineHeight = max(fontSize * 1.58, 30)
+        return activeLineHeight + slotHeight(for: fontSize) * Double(max(0, lineCount - 1))
+    }
+
+    static func verticalPadding(for fontSize: Double) -> Double {
+        max(4, fontSize * 0.16)
+    }
+
+    static func totalHeight(for fontSize: Double, lineCount: Int) -> Double {
+        glyphStackHeight(for: fontSize, lineCount: lineCount) + verticalPadding(for: fontSize) * 2
     }
 }
 
@@ -62,6 +93,7 @@ final class DesktopLyricsWindowController {
 private final class DesktopLyricsPanel: NSPanel {
     weak var store: LyricShioriStore?
     var isDraggable = true
+    var isUserDragging: Bool { dragStartMouseLocation != nil }
     private var dragStartMouseLocation: NSPoint?
     private var dragStartFrame: NSRect?
 
@@ -75,6 +107,7 @@ private final class DesktopLyricsPanel: NSPanel {
         }
         dragStartMouseLocation = NSEvent.mouseLocation
         dragStartFrame = frame
+        store?.isDesktopLyricsDragging = true
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -85,12 +118,12 @@ private final class DesktopLyricsPanel: NSPanel {
             return
         }
         let mouse = NSEvent.mouseLocation
-        let origin = NSPoint(
+        let proposedOrigin = NSPoint(
             x: dragStartFrame.origin.x + mouse.x - dragStartMouseLocation.x,
             y: dragStartFrame.origin.y + mouse.y - dragStartMouseLocation.y
         )
-        setFrameOrigin(origin)
-        let screenFrame = (screen ?? NSScreen.main)?.visibleFrame ?? dragStartFrame
+        let screenFrame = (screen ?? NSScreen.main)?.frame ?? dragStartFrame
+        setFrameOrigin(proposedOrigin)
         store?.setDesktopLyricsCenter(
             screenFrame: screenFrame,
             center: NSPoint(x: frame.midX, y: frame.midY)
@@ -100,11 +133,7 @@ private final class DesktopLyricsPanel: NSPanel {
     override func mouseUp(with event: NSEvent) {
         dragStartMouseLocation = nil
         dragStartFrame = nil
-    }
-}
-
-private extension Comparable {
-    func clamped(to range: ClosedRange<Self>) -> Self {
-        min(max(self, range.lowerBound), range.upperBound)
+        store?.isDesktopLyricsDragging = false
+        store?.syncDesktopLyricsWindow()
     }
 }

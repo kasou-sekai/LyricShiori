@@ -24,6 +24,9 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp "$BIN_DIR/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 cp "$INFO_PLIST" "$CONTENTS_DIR/Info.plist"
+if [[ -d "$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle" ]]; then
+    cp -R "$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle" "$RESOURCES_DIR/"
+fi
 printf "APPL????" > "$CONTENTS_DIR/PkgInfo"
 chmod +x "$MACOS_DIR/$APP_NAME"
 

@@ -6,6 +6,7 @@ struct TrackIdentity: Identifiable, Equatable, Codable, Hashable {
     var artist: String
     var album: String?
     var duration: TimeInterval?
+    var albumArtworkURL: String?
     var localFileURL: URL?
     var embeddedLyrics: String?
 
@@ -15,6 +16,7 @@ struct TrackIdentity: Identifiable, Equatable, Codable, Hashable {
         artist: "Lyric Shiori",
         album: nil,
         duration: nil,
+        albumArtworkURL: nil,
         localFileURL: nil,
         embeddedLyrics: nil
     )
@@ -25,6 +27,7 @@ struct TrackIdentity: Identifiable, Equatable, Codable, Hashable {
             title,
             artist,
             album ?? "",
+            albumArtworkURL ?? "",
             duration.map { String(Int($0.rounded())) } ?? "",
         ]
         .joined(separator: "\u{1f}")
@@ -66,61 +69,16 @@ struct LyricsDocument: Identifiable, Equatable {
     var sourceName: String?
     var localURL: URL?
     var needsPersist: Bool
+    var selectionState: LyricsSelectionState = .automaticSearch(cachedWithoutPlugin: false)
+    /// Optional per-lyric display data persisted in the LRCX `desktopLyricsColors` field.
+    var desktopLyricsColors: DesktopLyricsColors? = nil
 
     var adjustedDelay: TimeInterval {
         TimeInterval(offsetMilliseconds) / 1000
     }
 
-    var legacyLRC: String {
-        var output: [String] = []
-        if let title = metadata.title, !title.isEmpty {
-            output.append("[ti:\(title)]")
-        }
-        if let artist = metadata.artist, !artist.isEmpty {
-            output.append("[ar:\(artist)]")
-        }
-        if let album = metadata.album, !album.isEmpty {
-            output.append("[al:\(album)]")
-        }
-        if offsetMilliseconds != 0 {
-            output.append("[offset:\(offsetMilliseconds)]")
-        }
-        output.append(contentsOf: lines.map { "[\(Self.formatTimestamp($0.position))]\($0.content)" })
-        return output.joined(separator: "\n")
-    }
-
     var lrcx: String {
-        var output: [String] = []
-        if let title = metadata.title, !title.isEmpty {
-            output.append("[ti:\(title)]")
-        }
-        if let artist = metadata.artist, !artist.isEmpty {
-            output.append("[ar:\(artist)]")
-        }
-        if let album = metadata.album, !album.isEmpty {
-            output.append("[al:\(album)]")
-        }
-        if offsetMilliseconds != 0 {
-            output.append("[offset:\(offsetMilliseconds)]")
-        }
-
-        for line in lines {
-            let timestamp = Self.formatTimestamp(line.position)
-            output.append("[\(timestamp)]\(line.content)")
-            if !line.wordTimings.isEmpty {
-                let tags = line.wordTimings.enumerated().map { index, timing in
-                    let milliseconds = Int(max(0, timing.start - line.position) * 1000)
-                    return "<\(milliseconds),\(index)>"
-                }
-                .joined()
-                output.append("[\(timestamp)][tt]\(tags)")
-            }
-            for (language, translation) in line.translations.sorted(by: { $0.key < $1.key }) {
-                let tag = language == "default" ? "tr" : "tr:\(language)"
-                output.append("[\(timestamp)][\(tag)]\(translation)")
-            }
-        }
-        return output.joined(separator: "\n")
+        LyricsCacheFile.encodedString(document: self, track: nil)
     }
 
     func lineIndex(at playbackTime: TimeInterval) -> Int? {
@@ -148,6 +106,84 @@ struct LyricsDocument: Identifiable, Equatable {
         let centiseconds = Int((total - floor(total)) * 100)
         return String(format: "%02d:%02d.%02d", minutes, seconds, centiseconds)
     }
+
+}
+
+struct DesktopLyricsColors: Codable, Equatable {
+    /// The selected setting, for example `Automatic`, `Aurora`, or `Custom`.
+    var preset: String?
+    /// RGBA hex values are platform-neutral so the shared lyrics bridge can return them too.
+    var unplayedColor: String
+    var playedColor: String
+    var outlineColor: String
+}
+
+struct LyricsSelectionState: Equatable, Codable {
+    var isManualSelection: Bool
+    var origin: LyricsSelectionOrigin
+    var cachedWithoutPlugin: Bool
+
+    static func automaticSearch(cachedWithoutPlugin: Bool) -> LyricsSelectionState {
+        LyricsSelectionState(
+            isManualSelection: false,
+            origin: .automaticSearch,
+            cachedWithoutPlugin: cachedWithoutPlugin
+        )
+    }
+
+    static func manual(origin: LyricsSelectionOrigin = .manualSelection) -> LyricsSelectionState {
+        LyricsSelectionState(
+            isManualSelection: true,
+            origin: origin,
+            cachedWithoutPlugin: false
+        )
+    }
+
+    static let plugin = LyricsSelectionState(
+        isManualSelection: false,
+        origin: .plugin,
+        cachedWithoutPlugin: false
+    )
+
+    var cacheSource: LyricsCacheSource {
+        if isManualSelection {
+            return .manual
+        }
+        switch origin {
+        case .plugin, .spotify:
+            return .plugin
+        case .automaticSearch:
+            return cachedWithoutPlugin ? .withoutPlugin : .manual
+        case .manualSelection, .local, .unknown:
+            return .manual
+        }
+    }
+
+    static func from(cacheSource: LyricsCacheSource) -> LyricsSelectionState {
+        switch cacheSource {
+        case .withoutPlugin:
+            return .automaticSearch(cachedWithoutPlugin: true)
+        case .plugin:
+            return .plugin
+        case .manual:
+            return .manual()
+        }
+    }
+}
+
+enum LyricsSelectionOrigin: String, Codable, Equatable {
+    case plugin
+    case automaticSearch = "automatic-search"
+    case manualSelection = "manual-selection"
+    case local
+    case spotify
+    case unknown
+}
+
+enum LyricsCacheSource: String, Codable, Equatable {
+    case withoutPlugin = "without-plugin"
+    case plugin
+    case manual
 }
 
 struct LyricsMetadata: Equatable, Codable {

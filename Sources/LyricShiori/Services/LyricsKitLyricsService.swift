@@ -79,7 +79,7 @@ final class LyricsKitLyricsService: LyricsSearchService {
             needsPersist: false
         )
         document.metadata.languageCode = LyricsLanguageRecognizer.recognize(in: lines.map(\.content).joined(separator: "\n"))
-        return document
+        return LyricsContentNormalizer.removingLeadingMetadata(from: document)
     }
 
     private nonisolated static func wordTimings(from line: LyricsKit.LyricsLine) -> [WordTiming] {

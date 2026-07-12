@@ -13,14 +13,15 @@ enum LyricsParserError: LocalizedError {
 
 struct LyricsParser {
     private static let timestampPattern = #"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]"#
-    private static let metadataPattern = #"^\[([a-zA-Z]+):(.*)\]$"#
+    private static let metadataPattern = #"^\[([a-zA-Z][a-zA-Z-]*):(.*)\]$"#
     private static let attachmentPattern = #"^\[([^\]]+)\](.*)$"#
-    private static let inlineTimeTagPattern = #"<(\d+),(\d+)>"#
+    private static let inlineTimeTagPattern = #"<(\d+),(\d+)(?:,(\d+))?>"#
     private static let anyInlineTagPattern = #"<[^>]+>"#
 
     func parse(_ content: String, sourceName: String? = nil, localURL: URL? = nil) throws -> LyricsDocument {
         var metadata = LyricsMetadata(title: nil, artist: nil, album: nil, languageCode: nil, translationLanguages: [], request: nil)
         var offset = 0
+        var selectionState: LyricsSelectionState?
         var lines: [LyricsLine] = []
         var indexByPosition: [Int: Int] = [:]
         let timestampRegex = try NSRegularExpression(pattern: Self.timestampPattern)
@@ -34,7 +35,7 @@ struct LyricsParser {
             let timestampMatches = timestampRegex.matches(in: line, range: nsRange)
 
             if timestampMatches.isEmpty {
-                parseMetadataLine(line, regex: metadataRegex, metadata: &metadata, offset: &offset)
+                parseMetadataLine(line, regex: metadataRegex, metadata: &metadata, offset: &offset, selectionState: &selectionState)
                 continue
             }
 
@@ -74,11 +75,20 @@ struct LyricsParser {
             localURL: localURL,
             needsPersist: false
         )
+        if let selectionState {
+            document.selectionState = selectionState
+        }
         document.metadata.languageCode = LyricsLanguageRecognizer.recognize(in: document.lines.map(\.content).joined(separator: "\n"))
-        return document
+        return LyricsContentNormalizer.removingLeadingMetadata(from: document)
     }
 
-    private func parseMetadataLine(_ line: String, regex: NSRegularExpression, metadata: inout LyricsMetadata, offset: inout Int) {
+    private func parseMetadataLine(
+        _ line: String,
+        regex: NSRegularExpression,
+        metadata: inout LyricsMetadata,
+        offset: inout Int,
+        selectionState: inout LyricsSelectionState?
+    ) {
         let nsRange = NSRange(line.startIndex..<line.endIndex, in: line)
         guard let match = regex.firstMatch(in: line, range: nsRange),
               let keyRange = Range(match.range(at: 1), in: line),
@@ -99,6 +109,10 @@ struct LyricsParser {
             offset = Int(value) ?? 0
         case "lang", "language":
             metadata.languageCode = value
+        case "shiori-source":
+            if let cacheSource = LyricsCacheSource(rawValue: value) {
+                selectionState = .from(cacheSource: cacheSource)
+            }
         default:
             break
         }
@@ -193,13 +207,30 @@ struct LyricsParser {
     private func parseInlineTimeTags(_ content: String, base: TimeInterval) -> [WordTiming] {
         guard let regex = try? NSRegularExpression(pattern: Self.inlineTimeTagPattern) else { return [] }
         let nsRange = NSRange(content.startIndex..<content.endIndex, in: content)
-        return regex.matches(in: content, range: nsRange).compactMap { match in
+        let matches = regex.matches(in: content, range: nsRange)
+        return matches.enumerated().compactMap { index, match in
             guard let millisecondsRange = Range(match.range(at: 1), in: content),
                   let milliseconds = Double(content[millisecondsRange]) else {
                 return nil
             }
-            return WordTiming(start: base + milliseconds / 1000, duration: nil, text: "")
+            let duration = match.range(at: 3).location == NSNotFound
+                ? nil
+                : Range(match.range(at: 3), in: content).flatMap { Double(content[$0]).map { $0 / 1000 } }
+            let textStart = match.range.location + match.range.length
+            let textEnd = index + 1 < matches.count
+                ? matches[index + 1].range.location
+                : content.utf16.count
+            let textRange = NSRange(location: textStart, length: max(0, textEnd - textStart))
+            let text = Range(textRange, in: content).map { decodeInlineWordText(String(content[$0])) } ?? ""
+            return WordTiming(start: base + milliseconds / 1000, duration: duration, text: text)
         }
+    }
+
+    private func decodeInlineWordText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
     }
 
     private func stripInlineTags(from content: String) -> String {
