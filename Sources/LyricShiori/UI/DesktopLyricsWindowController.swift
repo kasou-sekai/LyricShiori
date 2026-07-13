@@ -56,14 +56,22 @@ final class DesktopLyricsWindowController {
         let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first
         let screenFrame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
         let fontSize = store.settings.desktopLyricsFontSize
-        let lineCount = max(1, store.desktopLyricsDisplayLines().count)
-        let maxWidth = max(280, screenFrame.width - 64)
+        let displayLines = store.desktopLyricsDisplayLines()
+        let lineCount = max(1, displayLines.count)
+        let maxWidth = max(1, screenFrame.width - 64)
         let maxHeight = max(1, screenFrame.height - 64)
-        let width = min(store.settings.desktopLyricsWidth, maxWidth)
-        let height = min(
-            DesktopLyricsLayout.totalHeight(for: fontSize, lineCount: lineCount),
-            maxHeight
-        )
+        let width: Double
+        let height: Double
+        if store.settings.desktopLyricsVerticalLayout {
+            // Vertical lyrics transpose the horizontal layout: the configured
+            // lyric width becomes the fixed reading height, while the window
+            // width grows only with the number of visible lyric columns.
+            width = min(DesktopLyricsLayout.verticalTotalWidth(for: fontSize, lineCount: lineCount), maxWidth)
+            height = min(store.settings.desktopLyricsWidth, maxHeight)
+        } else {
+            width = min(store.settings.desktopLyricsWidth, max(280, maxWidth))
+            height = min(DesktopLyricsLayout.totalHeight(for: fontSize, lineCount: lineCount), maxHeight)
+        }
         let x = screenFrame.minX + screenFrame.width * store.settings.desktopLyricsXPositionFactor - width / 2
         let y = screenFrame.minY + screenFrame.height * (1 - store.settings.desktopLyricsYPositionFactor) - height / 2
         return NSRect(x: x, y: y, width: width, height: height)
@@ -86,6 +94,24 @@ enum DesktopLyricsLayout {
 
     static func totalHeight(for fontSize: Double, lineCount: Int) -> Double {
         glyphStackHeight(for: fontSize, lineCount: lineCount) + verticalPadding(for: fontSize) * 2
+    }
+
+    static func horizontalPadding(for fontSize: Double) -> Double {
+        max(8, fontSize * 0.35)
+    }
+
+    static func verticalColumnWidth(for fontSize: Double) -> Double {
+        max(fontSize * 1.58, 30)
+    }
+
+    static func verticalColumnSlotWidth(for fontSize: Double) -> Double {
+        max(fontSize * 1.24, 28)
+    }
+
+    static func verticalTotalWidth(for fontSize: Double, lineCount: Int) -> Double {
+        verticalColumnWidth(for: fontSize)
+            + verticalColumnSlotWidth(for: fontSize) * Double(max(0, lineCount - 1))
+            + horizontalPadding(for: fontSize) * 2
     }
 }
 

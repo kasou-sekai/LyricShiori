@@ -14,11 +14,36 @@ struct DesktopLyricsView: View {
     )
 
     var body: some View {
-        lyricsContent
-            .onHover { mouseOverLyrics = $0 }
+        Group {
+            if store.settings.desktopLyricsVerticalLayout {
+                verticalLyricsContent
+            } else {
+                horizontalLyricsContent
+            }
+        }
+        .overlay {
+            if store.isDesktopLyricsDragging {
+                RoundedRectangle(
+                    cornerRadius: max(8, store.settings.desktopLyricsFontSize * 0.35),
+                    style: .continuous
+                )
+                .stroke(Color.black.opacity(0.78), lineWidth: 3)
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius: max(8, store.settings.desktopLyricsFontSize * 0.35),
+                        style: .continuous
+                    )
+                    .stroke(Color.white.opacity(0.9), lineWidth: 1)
+                }
+            }
+        }
+        .opacity(store.settings.hideLyricsWhenMousePassingBy && mouseOverLyrics ? 0 : 1)
+        .animation(linePromotionAnimation, value: store.currentLineIndex)
+        .animation(.easeInOut(duration: 0.22), value: mouseOverLyrics)
+        .onHover { mouseOverLyrics = $0 }
     }
 
-    private var lyricsContent: some View {
+    private var horizontalLyricsContent: some View {
         let lines = store.desktopLyricsDisplayLines()
         let palette = store.desktopLyricsPalette()
         let fontSize = store.settings.desktopLyricsFontSize
@@ -51,27 +76,314 @@ struct DesktopLyricsView: View {
         .padding(.horizontal, max(8, fontSize * 0.35))
         .padding(.vertical, verticalPadding)
         .frame(maxWidth: .infinity)
-        .overlay {
-            if store.isDesktopLyricsDragging {
-                let shape = RoundedRectangle(
-                    cornerRadius: max(8, fontSize * 0.35),
-                    style: .continuous
-                )
-                shape
-                    .stroke(Color.black.opacity(0.78), lineWidth: 3)
-                    .overlay {
-                        shape.stroke(Color.white.opacity(0.9), lineWidth: 1)
+    }
+
+    private var verticalLyricsContent: some View {
+        let lines = store.desktopLyricsDisplayLines()
+        let fontSize = store.settings.desktopLyricsFontSize
+        let direction = store.settings.desktopLyricsVerticalDirection
+        let alignment = store.settings.desktopLyricsAlignment
+        let verticalPadding = DesktopLyricsLayout.verticalPadding(for: fontSize)
+        let columnWidth = DesktopLyricsLayout.verticalColumnWidth(for: fontSize)
+        let columnSlotWidth = DesktopLyricsLayout.verticalColumnSlotWidth(for: fontSize)
+        let contentWidth = DesktopLyricsLayout.verticalTotalWidth(for: fontSize, lineCount: lines.count)
+            - DesktopLyricsLayout.horizontalPadding(for: fontSize) * 2
+
+        return GeometryReader { proxy in
+            let viewportHeight = max(1, proxy.size.height - verticalPadding * 2)
+            ZStack(alignment: .topLeading) {
+                ForEach(Array(lines.enumerated()), id: \.element.id) { offset, line in
+                    let columnOffset = direction == .leftToRight
+                        ? offset
+                        : lines.count - 1 - offset
+                    VerticalDesktopLyricColumn(
+                        line: line,
+                        palette: store.desktopLyricsPalette(),
+                        fontSize: fontSize,
+                        viewportHeight: viewportHeight,
+                        alignment: alignment
+                    )
+                    .frame(width: columnWidth, height: viewportHeight, alignment: .top)
+                    .offset(x: Double(columnOffset) * columnSlotWidth)
+                }
+            }
+            .frame(width: contentWidth, height: viewportHeight, alignment: .topLeading)
+            .padding(.horizontal, DesktopLyricsLayout.horizontalPadding(for: fontSize))
+            .padding(.vertical, verticalPadding)
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
+        }
+    }
+}
+
+private struct VerticalDesktopLyricColumn: View {
+    var line: DesktopLyricsDisplayLine
+    var palette: DesktopLyricsPalette
+    var fontSize: Double
+    var viewportHeight: Double
+    var alignment: DesktopLyricsAlignment
+    @State private var playbackAnchor: TimeInterval = 0
+    @State private var wallClockAnchor = Date()
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !line.isPlaying)) { context in
+            let playbackTime = livePlaybackTime(at: context.date)
+            VerticalScrollingColumn(
+                alignment: alignment,
+                progress: lineProgress(at: playbackTime),
+                lineDuration: line.lineEnd.map { max(0, $0 - line.lineStart) },
+                height: viewportHeight,
+                contentHeight: contentHeight
+            ) {
+                VStack(spacing: unitSpacing) {
+                    ForEach(units) { unit in
+                        glyph(unit, playbackTime: playbackTime)
+                            .frame(width: DesktopLyricsLayout.verticalColumnWidth(for: fontSize))
                     }
+                }
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .opacity(store.settings.hideLyricsWhenMousePassingBy && mouseOverLyrics ? 0 : 1)
-        // The retained views keep their identity, so the upcoming line glides into
-        // the active position instead of being replaced in place.
-        // Keep every retained row on one shared, non-bouncy track. The next row
-        // therefore occupies the active row's exact position instead of being
-        // visually replaced there.
-        .animation(linePromotionAnimation, value: store.currentLineIndex)
-        .animation(.easeInOut(duration: 0.22), value: mouseOverLyrics)
+        .frame(width: DesktopLyricsLayout.verticalColumnWidth(for: fontSize), height: viewportHeight)
+            .opacity(line.isActive ? 1 : 0.82)
+            // Keep the edge selected by the vertical alignment fixed while an
+            // upcoming column is de-emphasised. With a top anchor, an inactive
+            // column's bottom edge floated upward in Bottom mode.
+            .scaleEffect(line.isActive ? 1 : 0.88, anchor: alignment.verticalScaleAnchor)
+            .blur(radius: line.isActive ? 0 : 0.4)
+            .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .top)))
+            .animation(promotionAnimation, value: line.isActive)
+            .onAppear { syncPlaybackAnchor(to: line.playbackTime) }
+            .onChange(of: line.id) { _, _ in
+                syncPlaybackAnchor(to: line.playbackTime)
+            }
+            .onChange(of: line.playbackTime) { _, playbackTime in
+                syncPlaybackAnchor(to: playbackTime)
+            }
+            .onChange(of: line.isPlaying) { _, _ in
+                syncPlaybackAnchor(to: line.playbackTime)
+            }
+    }
+
+    private let promotionAnimation = Animation.timingCurve(
+        0.30, 0.15, 0.20, 1,
+        duration: 0.25
+    )
+
+    private var units: [VerticalDisplayUnit] {
+        let characters = Array(line.text).map(String.init)
+        var units: [VerticalDisplayUnit] = []
+        var index = 0
+        while index < characters.count {
+            let character = characters[index]
+            if character.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                units.append(.init(
+                    id: index,
+                    text: character,
+                    range: index..<(index + 1),
+                    isRotatedLatinWord: false,
+                    isWhitespace: true
+                ))
+                index += 1
+                continue
+            }
+
+            let start = index
+            if isLatinLetter(character) {
+                index += 1
+                while index < characters.count, isLatinLetter(characters[index]) {
+                    index += 1
+                }
+                units.append(.init(
+                    id: start,
+                    text: characters[start..<index].joined(),
+                    range: start..<index,
+                    isRotatedLatinWord: true,
+                    isWhitespace: false
+                ))
+            } else {
+                index += 1
+                units.append(.init(
+                    id: start,
+                    text: character,
+                    range: start..<index,
+                    isRotatedLatinWord: false,
+                    isWhitespace: false
+                ))
+            }
+        }
+        return units
+    }
+
+    @ViewBuilder
+    private func glyph(_ unit: VerticalDisplayUnit, playbackTime: TimeInterval) -> some View {
+        if unit.isWhitespace {
+            // A space is a separator, not a full CJK glyph slot. Rendering it
+            // as a non-breaking-space Text gave it an entire line-height and
+            // made Latin lyrics appear to have oversized word gaps.
+            Color.clear
+                .frame(height: unitHeight(for: unit))
+        } else {
+            let progress = unitProgress(unit, playbackTime: playbackTime)
+            let text = Text(unit.text)
+                .font(.system(size: fontSize, weight: line.isActive ? .semibold : .regular))
+                // Rotation is applied after layout. Let the unrotated Latin word
+                // take its natural width first, otherwise the narrow column clips
+                // it to an ellipsis before it is turned sideways.
+                .fixedSize(horizontal: true, vertical: false)
+                .shadow(
+                    color: palette.shadow.opacity(line.isActive ? 0.42 : 0.28),
+                    radius: fontSize * 0.065,
+                    x: 0,
+                    y: fontSize * 0.025
+                )
+
+            if line.isActive, timing(for: unit) != nil {
+                ZStack {
+                    text.foregroundStyle(palette.pending)
+                    text.foregroundStyle(palette.played).opacity(progress)
+                }
+                .scaleEffect(1 + 0.08 * sin(.pi * progress))
+                .offset(y: -fontSize * 0.065 * sin(.pi * progress))
+                .rotationEffect(unit.isRotatedLatinWord ? .degrees(90) : .zero)
+                .frame(height: unitHeight(for: unit))
+            } else {
+                text.foregroundStyle(line.isActive ? palette.played : palette.secondary)
+                    .rotationEffect(unit.isRotatedLatinWord ? .degrees(90) : .zero)
+                    .frame(height: unitHeight(for: unit))
+            }
+        }
+    }
+
+    private var unitSpacing: Double { -fontSize * 0.08 }
+
+    private var contentHeight: Double {
+        let totalHeight = units.reduce(0) { $0 + unitHeight(for: $1) }
+        return max(1, totalHeight + unitSpacing * Double(max(0, units.count - 1)))
+    }
+
+    private func unitHeight(for unit: VerticalDisplayUnit) -> Double {
+        if unit.isWhitespace {
+            return max(2, fontSize * 0.33)
+        }
+        guard unit.isRotatedLatinWord else { return fontSize * 1.02 }
+        return max(fontSize * 1.02, fontSize * 0.62 * Double(unit.text.count))
+    }
+
+    private func unitProgress(_ unit: VerticalDisplayUnit, playbackTime: TimeInterval) -> Double {
+        guard let timing = timing(for: unit) else { return 1 }
+        return min(max((playbackTime - timing.start) / max(0.08, timing.duration), 0), 1)
+    }
+
+    private func timing(for unit: VerticalDisplayUnit) -> CharacterTiming? {
+        let timings = unit.range.compactMap { characterTimings[safe: $0] }
+        guard let first = timings.first, let last = timings.last else { return nil }
+        return .init(start: first.start, duration: last.start + last.duration - first.start)
+    }
+
+    private func isLatinLetter(_ text: String) -> Bool {
+        text.range(of: "^[A-Za-z]+$", options: .regularExpression) != nil
+    }
+
+    private func lineProgress(at playbackTime: TimeInterval) -> Double {
+        guard let lineEnd = line.lineEnd, lineEnd > line.lineStart else { return line.progress }
+        return min(max((playbackTime - line.lineStart) / (lineEnd - line.lineStart), 0), 1)
+    }
+
+    private func livePlaybackTime(at date: Date) -> TimeInterval {
+        guard line.isPlaying else { return line.playbackTime }
+        return playbackAnchor + date.timeIntervalSince(wallClockAnchor)
+    }
+
+    private func syncPlaybackAnchor(to playbackTime: TimeInterval) {
+        playbackAnchor = playbackTime
+        wallClockAnchor = Date()
+    }
+
+    private var characterTimings: [CharacterTiming] {
+        guard let words = DesktopKaraokeWord.words(
+            text: line.text,
+            timings: line.wordTimings,
+            lineStart: line.lineStart,
+            lineEnd: line.lineEnd
+        ) else {
+            return []
+        }
+
+        return words.flatMap { word in
+            let wordCharacters = Array(word.text)
+            guard !wordCharacters.isEmpty else { return [CharacterTiming]() }
+            let characterDuration = word.duration / Double(wordCharacters.count)
+            return wordCharacters.indices.map { index in
+                CharacterTiming(
+                    start: word.start + characterDuration * Double(index),
+                    duration: characterDuration
+                )
+            }
+        }
+    }
+
+    private struct CharacterTiming {
+        var start: TimeInterval
+        var duration: TimeInterval
+    }
+
+    private struct VerticalDisplayUnit: Identifiable {
+        var id: Int
+        var text: String
+        var range: Range<Int>
+        var isRotatedLatinWord: Bool
+        var isWhitespace: Bool
+    }
+}
+
+private struct VerticalScrollingColumn<Content: View>: View {
+    var alignment: DesktopLyricsAlignment
+    var progress: Double
+    var lineDuration: TimeInterval?
+    var height: Double
+    var contentHeight: Double
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        GeometryReader { proxy in
+            let viewportHeight = proxy.size.height
+            let intrinsicHeight = CGFloat(contentHeight)
+            let overflow = max(0, intrinsicHeight - viewportHeight)
+            let yOffset = overflow > 1
+                ? -overflow * timedScrollPhase(progress: progress, lineDuration: lineDuration)
+                : restingOffset(viewportHeight: viewportHeight, contentHeight: intrinsicHeight)
+
+            content
+                .frame(width: proxy.size.width, height: intrinsicHeight, alignment: .top)
+                .offset(y: yOffset)
+                .frame(width: proxy.size.width, height: viewportHeight, alignment: .top)
+                .clipped()
+        }
+        .frame(height: height)
+    }
+
+    private func restingOffset(viewportHeight: CGFloat, contentHeight: CGFloat) -> CGFloat {
+        switch alignment {
+        case .left:
+            0
+        case .center:
+            max(0, (viewportHeight - contentHeight) / 2)
+        case .right:
+            max(0, viewportHeight - contentHeight)
+        }
+    }
+
+    private func timedScrollPhase(progress: Double, lineDuration: TimeInterval?) -> CGFloat {
+        let clamped = min(max(progress, 0), 1)
+        guard let lineDuration, lineDuration > 0.2 else {
+            return CGFloat(clamped)
+        }
+        let startHold = min(0.45, max(0.18, lineDuration * 0.10))
+        let endHold = min(0.65, max(0.20, lineDuration * 0.08))
+        let movingDuration = max(0.12, lineDuration - startHold - endHold)
+        let currentTime = clamped * lineDuration
+        let movingProgress = (currentTime - startHold) / movingDuration
+        return CGFloat(min(max(movingProgress, 0), 1))
     }
 }
 
