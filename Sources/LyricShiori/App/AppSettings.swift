@@ -26,7 +26,7 @@ final class AppSettings {
     var desktopLyricsMousePassthrough: Bool = false { didSet { save(desktopLyricsMousePassthrough, Keys.desktopLyricsMousePassthrough) } }
 
     var menuBarLyricsEnabled: Bool = true { didSet { save(menuBarLyricsEnabled, Keys.menuBarLyricsEnabled) } }
-    var menuBarLyricsCombined: Bool = true { didSet { save(menuBarLyricsCombined, Keys.menuBarLyricsCombined) } }
+    var menuBarDisplayMode: MenuBarDisplayMode = .combined { didSet { save(menuBarDisplayMode.rawValue, Keys.menuBarDisplayMode) } }
     var menuBarLyricsMaxWidth: Double = 260 { didSet { save(menuBarLyricsMaxWidth, Keys.menuBarLyricsMaxWidth) } }
 
     var disableLyricsWhenPaused: Bool = true { didSet { save(disableLyricsWhenPaused, Keys.disableLyricsWhenPaused) } }
@@ -111,7 +111,7 @@ final class AppSettings {
         desktopLyricsMousePassthrough = bool(Keys.desktopLyricsMousePassthrough, default: desktopLyricsMousePassthrough)
 
         menuBarLyricsEnabled = bool(Keys.menuBarLyricsEnabled, default: menuBarLyricsEnabled)
-        menuBarLyricsCombined = bool(Keys.menuBarLyricsCombined, default: menuBarLyricsCombined)
+        menuBarDisplayMode = menuBarDisplayModeValue()
         menuBarLyricsMaxWidth = min(max(double(Keys.menuBarLyricsMaxWidth, default: menuBarLyricsMaxWidth), 80), 600)
         disableLyricsWhenPaused = bool(Keys.disableLyricsWhenPaused, default: disableLyricsWhenPaused)
         disableLyricsWhenScreenShot = bool(Keys.disableLyricsWhenScreenShot, default: disableLyricsWhenScreenShot)
@@ -200,6 +200,16 @@ final class AppSettings {
         return providers.isEmpty ? defaultValue : providers
     }
 
+    private func menuBarDisplayModeValue() -> MenuBarDisplayMode {
+        if let rawValue = defaults.string(forKey: Keys.menuBarDisplayMode),
+           let mode = MenuBarDisplayMode(rawValue: rawValue) {
+            return mode
+        }
+
+        // Preserve the existing combined/separated preference for upgrades.
+        return bool(Keys.menuBarLyricsCombined, default: true) ? .combined : .separated
+    }
+
     private func color(_ key: String, default defaultValue: Color) -> Color {
         guard let data = defaults.data(forKey: key),
               let color = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: data) else {
@@ -215,6 +225,14 @@ enum ChineseConversionMode: String, CaseIterable, Identifiable {
     case traditional = "Traditional"
 
     var id: String { rawValue }
+}
+
+enum MenuBarDisplayMode: String, CaseIterable, Identifiable {
+    case separated
+    case combined
+    case hidden
+
+    var id: Self { self }
 }
 
 enum DesktopLyricsAlignment: String, CaseIterable, Identifiable {
@@ -350,6 +368,7 @@ private enum Keys {
 
     static let menuBarLyricsEnabled = "MenuBarLyricsEnabled"
     static let menuBarLyricsCombined = "CombinedMenubarLyrics"
+    static let menuBarDisplayMode = "MenuBarDisplayMode"
     static let menuBarLyricsMaxWidth = "MenuBarLyricsMaxWidth"
     static let disableLyricsWhenPaused = "DisableLyricsWhenPaused"
     static let disableLyricsWhenScreenShot = "DisableLyricsWhenSreenShot"

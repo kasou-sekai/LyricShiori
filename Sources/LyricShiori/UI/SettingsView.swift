@@ -119,9 +119,10 @@ private struct GeneralSettingsView: View {
 
             Section("Menu bar") {
                 Toggle("Show lyrics in the menu bar", isOn: $store.settings.menuBarLyricsEnabled)
-                Picker("Icon and lyrics", selection: $store.settings.menuBarLyricsCombined) {
-                    Text("Combined").tag(true)
-                    Text("Separate").tag(false)
+                Picker("Menu bar display", selection: $store.settings.menuBarDisplayMode) {
+                    Text("Separated").tag(MenuBarDisplayMode.separated)
+                    Text("Combined").tag(MenuBarDisplayMode.combined)
+                    Text("Hidden").tag(MenuBarDisplayMode.hidden)
                 }
                 .pickerStyle(.segmented)
                 .disabled(!store.settings.menuBarLyricsEnabled)
