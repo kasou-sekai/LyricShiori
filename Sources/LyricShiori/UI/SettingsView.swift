@@ -119,9 +119,10 @@ private struct GeneralSettingsView: View {
 
             Section("Menu bar") {
                 Toggle("Show lyrics in the menu bar", isOn: $store.settings.menuBarLyricsEnabled)
-                Picker("Icon and lyrics", selection: $store.settings.menuBarLyricsCombined) {
-                    Text("Combined").tag(true)
-                    Text("Separate").tag(false)
+                Picker("Menu bar display", selection: $store.settings.menuBarDisplayMode) {
+                    Text("Separated").tag(MenuBarDisplayMode.separated)
+                    Text("Combined").tag(MenuBarDisplayMode.combined)
+                    Text("Hidden").tag(MenuBarDisplayMode.hidden)
                 }
                 .pickerStyle(.segmented)
                 .disabled(!store.settings.menuBarLyricsEnabled)
@@ -202,7 +203,9 @@ private struct DisplaySettingsView: View {
                 Stepper("Previous lines: \(store.settings.desktopLyricsPreviousLineCount)", value: $store.settings.desktopLyricsPreviousLineCount, in: 0...3)
                 Stepper("Next lines: \(store.settings.desktopLyricsNextLineCount)", value: $store.settings.desktopLyricsNextLineCount, in: 0...3)
                 Slider(value: $store.settings.desktopLyricsWidth, in: 280...1_000, step: 10) {
-                    Text("Lyrics width: \(Int(store.settings.desktopLyricsWidth)) pt")
+                    Text(store.settings.desktopLyricsVerticalLayout
+                        ? "Lyrics height: \(Int(store.settings.desktopLyricsWidth)) pt"
+                        : "Lyrics width: \(Int(store.settings.desktopLyricsWidth)) pt")
                 } minimumValueLabel: {
                     Text("280")
                 } maximumValueLabel: {
@@ -218,9 +221,21 @@ private struct DisplaySettingsView: View {
                 } maximumValueLabel: {
                     Text("72")
                 }
+                Toggle("Vertical lyrics", isOn: $store.settings.desktopLyricsVerticalLayout)
+                if store.settings.desktopLyricsVerticalLayout {
+                    Picker("Column direction", selection: $store.settings.desktopLyricsVerticalDirection) {
+                        ForEach(DesktopLyricsVerticalDirection.allCases) { direction in
+                            Text(direction.rawValue).tag(direction)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
                 Picker("Alignment", selection: $store.settings.desktopLyricsAlignment) {
                     ForEach(DesktopLyricsAlignment.allCases) { alignment in
-                        Text(alignment.rawValue).tag(alignment)
+                        Text(store.settings.desktopLyricsVerticalLayout
+                            ? alignment.verticalDisplayName
+                            : alignment.rawValue)
+                            .tag(alignment)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -254,6 +269,12 @@ private struct DisplaySettingsView: View {
             store.persistDesktopLyricsColors()
         }
         .onChange(of: store.settings.desktopLyricsFontSize) { _, _ in
+            store.syncDesktopLyricsWindow()
+        }
+        .onChange(of: store.settings.desktopLyricsVerticalLayout) { _, _ in
+            store.syncDesktopLyricsWindow()
+        }
+        .onChange(of: store.settings.desktopLyricsVerticalDirection) { _, _ in
             store.syncDesktopLyricsWindow()
         }
         .onChange(of: store.settings.desktopLyricsWidth) { _, _ in
