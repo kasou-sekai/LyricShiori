@@ -25,5 +25,9 @@ let package = Package(
                 .copy("Resources/emoji-bookmark-template.png"),
             ]
         ),
+        .testTarget(
+            name: "LyricShioriTests",
+            dependencies: ["LyricShiori"]
+        ),
     ]
 )

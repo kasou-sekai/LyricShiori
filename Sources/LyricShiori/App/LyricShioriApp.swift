@@ -7,7 +7,6 @@ struct LyricShioriApp: App {
     @State private var menuBarController: MenuBarController
 
     init() {
-        AppDataMigrator.migrateIfNeeded()
         let store = LyricShioriStore()
         store.start()
         _store = State(initialValue: store)

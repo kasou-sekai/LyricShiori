@@ -25,13 +25,13 @@ struct LyricsCandidateMatcher {
     }
 
     func evaluate(_ result: LyricsSearchResult) -> LyricsSearchResult? {
-        guard firstMeaningfulLine(in: result.document) != nil else { return nil }
+        let hasMeaningfulLine = firstMeaningfulLine(in: result.document) != nil
 
         let titleMatches = isBaseTitleMatch(result.title, request.title)
         let durationMatches = isDurationMatch(result.duration, request.duration)
         let artistOrAlbumMatches = isArtistOrAlbumMatch(result)
         let firstLineMatches = isFirstLineMatch(result.document)
-        let isStrictMatch = titleMatches && durationMatches && artistOrAlbumMatches && firstLineMatches
+        let isStrictMatch = hasMeaningfulLine && titleMatches && durationMatches && artistOrAlbumMatches && firstLineMatches
         guard mode == .rankedManual || isStrictMatch else { return nil }
 
         var copy = result

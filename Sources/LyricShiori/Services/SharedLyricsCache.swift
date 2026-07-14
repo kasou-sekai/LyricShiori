@@ -2,6 +2,11 @@ import Foundation
 import Network
 
 final class SharedLyricsCache: @unchecked Sendable {
+    enum SaveResult {
+        case saved
+        case unchanged
+        case rejected
+    }
     enum Kind: String, CaseIterable, Codable {
         case spotify
         case enhanced
@@ -66,16 +71,16 @@ final class SharedLyricsCache: @unchecked Sendable {
     private let lock = NSLock()
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private var memoryStore: Store?
 
-    private let cacheVersion = 9
+    private let cacheVersion = 10
     private let readyTTL: Int64 = 14 * 24 * 60 * 60 * 1000
-    private let emptyTTL: Int64 = 30 * 60 * 1000
     private let maxEntries = 80
 
     init(url: URL? = nil) {
         self.url = url ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Music/\(Defaults.defaultLyricsDirectoryName)", isDirectory: true)
-            .appendingPathComponent("full-screen-lyrics-cache-v9.json")
+            .appendingPathComponent("full-screen-lyrics-cache-v10.json")
     }
 
     func loadDocument(for track: TrackIdentity) throws -> LyricsDocument? {
@@ -216,7 +221,9 @@ final class SharedLyricsCache: @unchecked Sendable {
         }
     }
 
-    func save(_ entry: Entry) throws {
+    @discardableResult
+    func save(_ entry: Entry) throws -> SaveResult {
+        guard isValid(entry) else { return .rejected }
         lock.lock()
         defer { lock.unlock() }
 
@@ -227,7 +234,7 @@ final class SharedLyricsCache: @unchecked Sendable {
            effectiveCacheSource(for: entry) != .manual {
             try persist(store)
             LyricsBridgeTrace.record(event: "cache.rejected.manual-preserved", entry: entry)
-            return
+            return .rejected
         }
         if let existing = store.entries[key],
            effectiveCacheSource(for: entry) != .manual,
@@ -238,18 +245,19 @@ final class SharedLyricsCache: @unchecked Sendable {
             // lyrics by a late bridge update.
             try persist(store)
             LyricsBridgeTrace.record(event: "cache.rejected.quality-preserved", entry: entry)
-            return
+            return .rejected
         }
         // Retried bridge POSTs carry the same cache timestamp. They are not a
         // new lyric selection, so avoid re-persisting the cache and notifying
-        // the UI to reload the current .lrcx file.
+        // the UI to reload the current lyric file.
         if store.entries[key]?.cachedAt == entry.cachedAt {
-            return
+            return .unchanged
         }
         store.entries[key] = entry
         trim(&store)
         try persist(store)
         LyricsBridgeTrace.record(event: "cache.saved", entry: entry)
+        return .saved
     }
 
     func encodedEntry(trackUri: String, kind: Kind) throws -> Data? {
@@ -285,45 +293,10 @@ final class SharedLyricsCache: @unchecked Sendable {
     }
 
     @discardableResult
-    func saveEncodedEntry(_ data: Data) throws -> Entry {
+    func saveEncodedEntry(_ data: Data) throws -> Entry? {
         let entry = try decoder.decode(Entry.self, from: data)
         LyricsBridgeTrace.record(event: "bridge.received", entry: entry)
-        try save(entry)
-        return entry
-    }
-
-    func localPersistenceDocument(from entry: Entry) -> (track: TrackIdentity, document: LyricsDocument)? {
-        guard let track = trackIdentity(from: entry), !entry.lines.isEmpty else { return nil }
-        return (track, document(from: entry, track: track))
-    }
-
-    func bestLocalPersistenceDocument(for trackURI: String) throws -> (track: TrackIdentity, document: LyricsDocument)? {
-        lock.lock()
-        defer { lock.unlock() }
-
-        var store = try loadStore()
-        removeExpiredEntries(from: &store)
-        guard let entry = bestLocalPersistenceEntry(
-            from: store.entries.values.filter { $0.trackUri == trackURI }
-        ), let document = localPersistenceDocument(from: entry) else {
-            try persist(store)
-            return nil
-        }
-        try persist(store)
-        LyricsBridgeTrace.record(event: "local.persistence.selected", entry: entry)
-        return document
-    }
-
-    func localPersistenceDocuments() throws -> [(track: TrackIdentity, document: LyricsDocument)] {
-        lock.lock()
-        defer { lock.unlock() }
-
-        var store = try loadStore()
-        removeExpiredEntries(from: &store)
-        let bestEntries = Dictionary(grouping: store.entries.values.filter { !$0.lines.isEmpty && trackIdentity(from: $0) != nil }, by: \.trackUri)
-            .compactMapValues(bestLocalPersistenceEntry)
-        try persist(store)
-        return bestEntries.values.compactMap { localPersistenceDocument(from: $0) }
+        return try save(entry) == .saved ? entry : nil
     }
 
     private func document(from entry: Entry, track: TrackIdentity) -> LyricsDocument {
@@ -423,24 +396,6 @@ final class SharedLyricsCache: @unchecked Sendable {
 
     private var preferredKinds: [Kind] {
         [.enhanced, .enhancedRelaxed, .spotify]
-    }
-
-    private func trackIdentity(from entry: Entry) -> TrackIdentity? {
-        let title = entry.metadata?.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let artist = entry.metadata?.artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard isSpotifyTrack(entry.trackUri), !title.isEmpty, !artist.isEmpty else {
-            return nil
-        }
-        return TrackIdentity(
-            id: entry.trackUri,
-            title: title,
-            artist: artist,
-            album: entry.metadata?.album,
-            duration: nil,
-            albumArtworkURL: nil,
-            localFileURL: nil,
-            embeddedLyrics: nil
-        )
     }
 
     private func compareLocalPersistencePriority(_ lhs: Entry, _ rhs: Entry) -> Int {
@@ -620,14 +575,31 @@ final class SharedLyricsCache: @unchecked Sendable {
     }
 
     private func loadStore() throws -> Store {
+        if let memoryStore { return memoryStore }
         guard FileManager.default.fileExists(atPath: url.path) else {
-            return Store(version: cacheVersion, entries: [:])
+            let store = Store(version: cacheVersion, entries: [:])
+            memoryStore = store
+            return store
         }
         let data = try Data(contentsOf: url)
-        let store = try decoder.decode(Store.self, from: data)
-        guard store.version == cacheVersion else {
-            return Store(version: cacheVersion, entries: [:])
+        let store: Store
+        do {
+            store = try decoder.decode(Store.self, from: data)
+        } catch {
+            let quarantineURL = url
+                .deletingPathExtension()
+                .appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970)).json")
+            try? FileManager.default.moveItem(at: url, to: quarantineURL)
+            let store = Store(version: cacheVersion, entries: [:])
+            memoryStore = store
+            return store
         }
+        guard store.version == cacheVersion else {
+            let empty = Store(version: cacheVersion, entries: [:])
+            memoryStore = empty
+            return empty
+        }
+        memoryStore = store
         return store
     }
 
@@ -635,6 +607,7 @@ final class SharedLyricsCache: @unchecked Sendable {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let data = try encoder.encode(store)
         try data.write(to: url, options: .atomic)
+        memoryStore = store
     }
 
     private func removeExpiredEntries(from store: inout Store) {
@@ -665,13 +638,49 @@ final class SharedLyricsCache: @unchecked Sendable {
     private func isSpotifyTrack(_ id: String) -> Bool {
         id.hasPrefix("spotify:track:")
     }
+
+    private func isValid(_ entry: Entry) -> Bool {
+        guard isSpotifyTrack(entry.trackUri),
+              entry.trackUri.utf8.count <= 256,
+              entry.lines.count <= 5_000,
+              entry.expiresAt > entry.cachedAt,
+              entry.expiresAt - entry.cachedAt <= 31 * 24 * 60 * 60 * 1_000 else {
+            return false
+        }
+        return entry.lines.allSatisfy { line in
+            line.text.utf8.count <= 16_384
+                && (line.translation?.utf8.count ?? 0) <= 16_384
+                && (line.romanization?.utf8.count ?? 0) <= 16_384
+                && (line.furigana?.utf8.count ?? 0) <= 16_384
+                && (line.words?.count ?? 0) <= 2_000
+        }
+    }
 }
 
 final class SharedLyricsCacheServer: @unchecked Sendable {
+    private struct BridgeState: Codable {
+        var trackUri: String
+        var leaseMilliseconds: Int?
+        var active: Bool
+    }
+
+    private struct SessionResponse: Codable {
+        var token: String
+        var protocolVersion: Int
+    }
+
     private let cache: SharedLyricsCache
     private let localStorage: LocalLyricsStorage
     private var listener: NWListener?
     private let port: NWEndpoint.Port = 24887
+    private let sessionToken = UUID().uuidString
+    private let stateLock = NSLock()
+    private var activeLeases: [String: Int64] = [:]
+    private let maximumHeaderBytes = 32 * 1_024
+    private let maximumBodyBytes = 1_024 * 1_024
+    private let allowedOrigins: Set<String> = [
+        "https://xpui.app.spotify.com",
+    ]
     var onEntrySaved: ((SharedLyricsCache.Entry) -> Void)?
 
     init(cache: SharedLyricsCache, localStorage: LocalLyricsStorage = LocalLyricsStorage()) {
@@ -682,7 +691,9 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     func start() {
         guard listener == nil else { return }
         do {
-            let listener = try NWListener(using: .tcp, on: port)
+            let parameters = NWParameters.tcp
+            parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: port)
+            let listener = try NWListener(using: parameters)
             listener.newConnectionHandler = { [weak self] connection in
                 self?.handle(connection)
             }
@@ -696,10 +707,22 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     func stop() {
         listener?.cancel()
         listener = nil
+        stateLock.withLock { activeLeases.removeAll() }
+    }
+
+    func hasActiveLease(for trackURI: String) -> Bool {
+        stateLock.withLock {
+            let now = nowMilliseconds()
+            activeLeases = activeLeases.filter { $0.value > now }
+            return (activeLeases[trackURI] ?? 0) > now
+        }
     }
 
     private func handle(_ connection: NWConnection) {
         connection.start(queue: .global(qos: .utility))
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5) {
+            connection.cancel()
+        }
         receive(on: connection, buffer: Data())
     }
 
@@ -713,6 +736,10 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
             if let data {
                 nextBuffer.append(data)
             }
+            if nextBuffer.count > self.maximumHeaderBytes + self.maximumBodyBytes {
+                self.send(self.httpResponse(status: "413 Payload Too Large"), on: connection)
+                return
+            }
             if self.isCompleteRequest(nextBuffer) || isComplete {
                 self.respond(to: nextBuffer, on: connection)
             } else {
@@ -722,17 +749,20 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     }
 
     private func isCompleteRequest(_ data: Data) -> Bool {
-        guard let text = String(data: data, encoding: .utf8),
-              let headerEnd = text.range(of: "\r\n\r\n") else {
+        let separator = Data("\r\n\r\n".utf8)
+        guard let headerRange = data.range(of: separator) else {
             return false
         }
-        let headers = String(text[..<headerEnd.lowerBound])
-        let bodyStart = String(text[..<headerEnd.upperBound]).utf8.count
+        guard headerRange.lowerBound <= maximumHeaderBytes,
+              let headers = String(data: data[..<headerRange.lowerBound], encoding: .utf8) else {
+            return true
+        }
         let contentLength = headers
             .components(separatedBy: "\r\n")
             .first { $0.lowercased().hasPrefix("content-length:") }
             .flatMap { Int($0.split(separator: ":", maxSplits: 1).last?.trimmingCharacters(in: .whitespaces) ?? "") } ?? 0
-        return data.count >= bodyStart + contentLength
+        guard contentLength >= 0, contentLength <= maximumBodyBytes else { return true }
+        return data.count >= headerRange.upperBound + contentLength
     }
 
     private func respond(to data: Data, on connection: NWConnection) {
@@ -747,12 +777,19 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         })
     }
 
+    private func send(_ response: Data, on connection: NWConnection) {
+        connection.send(content: response, completion: .contentProcessed { _ in
+            connection.cancel()
+        })
+    }
+
     private func handleRequest(_ data: Data) throws -> Data {
-        guard let text = String(data: data, encoding: .utf8),
-              let headerEnd = text.range(of: "\r\n\r\n") else {
+        let separator = Data("\r\n\r\n".utf8)
+        guard let headerRange = data.range(of: separator),
+              headerRange.lowerBound <= maximumHeaderBytes,
+              let headerText = String(data: data[..<headerRange.lowerBound], encoding: .utf8) else {
             return httpResponse(status: "400 Bad Request")
         }
-        let headerText = String(text[..<headerEnd.lowerBound])
         let lines = headerText.components(separatedBy: "\r\n")
         guard let requestLine = lines.first else {
             return httpResponse(status: "400 Bad Request")
@@ -763,41 +800,90 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         }
         let method = String(requestParts[0])
         let target = String(requestParts[1])
-
-        if method == "OPTIONS" {
-            return httpResponse(status: "204 No Content")
+        var headers: [String: String] = [:]
+        for line in lines.dropFirst() {
+            let parts = line.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            headers[String(parts[0]).lowercased()] = parts[1].trimmingCharacters(in: .whitespaces)
+        }
+        let origin = headers["origin"]
+        guard origin.map({ allowedOrigins.contains($0) }) ?? true else {
+            return httpResponse(status: "403 Forbidden")
         }
 
-        guard let components = URLComponents(string: "http://localhost\(target)"),
-              components.path == "/lyrics-cache" else {
+        if method == "OPTIONS" {
+            return httpResponse(status: "204 No Content", origin: origin)
+        }
+
+        guard let components = URLComponents(string: "http://localhost\(target)") else {
+            return httpResponse(status: "400 Bad Request", origin: origin)
+        }
+
+        if method == "GET", components.path == "/bridge-session" {
+            let body = try JSONEncoder().encode(SessionResponse(token: sessionToken, protocolVersion: 1))
+            return httpResponse(status: "200 OK", body: body, contentType: "application/json", origin: origin)
+        }
+
+        guard headers["x-lyricshiori-token"] == sessionToken else {
+            return httpResponse(status: "401 Unauthorized", origin: origin)
+        }
+
+        let declaredLength = headers["content-length"].flatMap(Int.init) ?? 0
+        guard declaredLength >= 0, declaredLength <= maximumBodyBytes,
+              data.count >= headerRange.upperBound + declaredLength else {
+            return httpResponse(status: "413 Payload Too Large", origin: origin)
+        }
+        let body = Data(data[headerRange.upperBound..<(headerRange.upperBound + declaredLength)])
+
+        if method == "POST", components.path == "/bridge-state" {
+            let state = try JSONDecoder().decode(BridgeState.self, from: body)
+            guard state.trackUri.hasPrefix("spotify:track:"), state.trackUri.utf8.count <= 256 else {
+                return httpResponse(status: "400 Bad Request", origin: origin)
+            }
+            stateLock.withLock {
+                if state.active {
+                    let lease = min(max(state.leaseMilliseconds ?? 8_000, 1_000), 15_000)
+                    activeLeases[state.trackUri] = nowMilliseconds() + Int64(lease)
+                } else {
+                    activeLeases.removeValue(forKey: state.trackUri)
+                }
+            }
+            return httpResponse(status: "204 No Content", origin: origin)
+        }
+
+        guard components.path == "/lyrics-cache" else {
             return httpResponse(status: "404 Not Found")
         }
 
         if method == "GET" {
-            let query = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+            var query: [String: String] = [:]
+            for item in components.queryItems ?? [] where query[item.name] == nil {
+                query[item.name] = item.value ?? ""
+            }
             guard let trackUri = query["trackUri"],
+                  trackUri.hasPrefix("spotify:track:"),
+                  trackUri.utf8.count <= 256,
                   let kindValue = query["kind"],
                   let kind = SharedLyricsCache.Kind(rawValue: kindValue) else {
-                return httpResponse(status: "400 Bad Request")
+                return httpResponse(status: "400 Bad Request", origin: origin)
             }
             if let localBody = try encodedLocalEntry(query: query, trackUri: trackUri, kind: kind) {
-                return httpResponse(status: "200 OK", body: localBody, contentType: "application/json")
+                return httpResponse(status: "200 OK", body: localBody, contentType: "application/json", origin: origin)
             }
             guard let body = try cache.encodedPreferredEntry(trackUri: trackUri, kind: kind) else {
-                return httpResponse(status: "404 Not Found")
+                return httpResponse(status: "404 Not Found", origin: origin)
             }
-            return httpResponse(status: "200 OK", body: body, contentType: "application/json")
+            return httpResponse(status: "200 OK", body: body, contentType: "application/json", origin: origin)
         }
 
         if method == "POST" {
-            let bodyStart = String(text[..<headerEnd.upperBound]).utf8.count
-            let body = data.dropFirst(bodyStart)
-            let entry = try cache.saveEncodedEntry(Data(body))
-            onEntrySaved?(entry)
-            return httpResponse(status: "204 No Content")
+            if let entry = try cache.saveEncodedEntry(body) {
+                onEntrySaved?(entry)
+            }
+            return httpResponse(status: "204 No Content", origin: origin)
         }
 
-        return httpResponse(status: "405 Method Not Allowed")
+        return httpResponse(status: "405 Method Not Allowed", origin: origin)
     }
 
     private func encodedLocalEntry(query: [String: String], trackUri: String, kind: SharedLyricsCache.Kind) throws -> Data? {
@@ -821,12 +907,21 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         return try cache.encodedBestPreferredEntry(document, for: track, kind: kind)
     }
 
-    private func httpResponse(status: String, body: Data = Data(), contentType: String = "text/plain; charset=utf-8") -> Data {
+    private func httpResponse(
+        status: String,
+        body: Data = Data(),
+        contentType: String = "text/plain; charset=utf-8",
+        origin: String? = nil
+    ) -> Data {
+        let corsOrigin = origin.flatMap { allowedOrigins.contains($0) ? $0 : nil }
+        let corsHeaders = corsOrigin.map {
+            "Access-Control-Allow-Origin: \($0)\r\nVary: Origin\r\n"
+        } ?? ""
         let header = """
         HTTP/1.1 \(status)\r
-        Access-Control-Allow-Origin: *\r
+        \(corsHeaders)\
         Access-Control-Allow-Methods: GET, POST, OPTIONS\r
-        Access-Control-Allow-Headers: Content-Type, Accept\r
+        Access-Control-Allow-Headers: Content-Type, Accept, X-LyricShiori-Token\r
         Content-Type: \(contentType)\r
         Content-Length: \(body.count)\r
         Connection: close\r
@@ -850,6 +945,10 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         @unknown default:
             return decodingError.localizedDescription
         }
+    }
+
+    private func nowMilliseconds() -> Int64 {
+        Int64((Date().timeIntervalSince1970 * 1_000).rounded())
     }
 }
 

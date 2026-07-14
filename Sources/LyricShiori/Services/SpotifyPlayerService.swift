@@ -7,8 +7,13 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
 
     var snapshot: PlaybackSnapshot {
         get async {
+            guard NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == "com.spotify.client" }) else {
+                return .stopped
+            }
             do {
-                return try runSnapshotScript()
+                return try await Task.detached(priority: .utility) {
+                    try Self.runSnapshotScript()
+                }.value
             } catch {
                 return .stopped
             }
@@ -36,7 +41,7 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
     }
 
     func requestAccess() async throws {
-        _ = try runAppleScript("""
+        _ = try Self.runAppleScript("""
         tell application id "com.spotify.client"
             activate
             return player state as string
@@ -44,11 +49,7 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
         """)
     }
 
-    private func runSnapshotScript() throws -> PlaybackSnapshot {
-        guard NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == "com.spotify.client" }) else {
-            return .stopped
-        }
-
+    private nonisolated static func runSnapshotScript() throws -> PlaybackSnapshot {
         let script = """
         tell application id "com.spotify.client"
             if player state is stopped then
@@ -95,14 +96,14 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
     }
 
     private func runSpotifyCommand(_ command: String) throws -> String {
-        try runAppleScript("""
+        try Self.runAppleScript("""
         tell application id "com.spotify.client"
             \(command)
         end tell
         """)
     }
 
-    private func runAppleScript(_ source: String) throws -> String {
+    private nonisolated static func runAppleScript(_ source: String) throws -> String {
         var error: NSDictionary?
         guard let script = NSAppleScript(source: source) else {
             throw ServiceError.adapterNotImplemented("AppleScript")

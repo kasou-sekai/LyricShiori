@@ -334,7 +334,6 @@ enum DesktopLyricsColorPreset: String, CaseIterable, Identifiable {
 
 enum Defaults {
     static let defaultLyricsDirectoryName = "LyricShiori"
-    static let legacyLyricsDirectoryName = "LyricsX"
 
     static let lyricsFilterKeys = [
         #"/(by|title|song|album|artist|singer|lyrics)\s*[:：∶]"#,

@@ -25,12 +25,9 @@ final class LyricsKitLyricsService: LyricsSearchService {
             duration: request.duration ?? 0,
             limit: request.limit
         )
-        async let qqMusicIDs: [String: String] = providerID == .qqMusic
-            ? QQMusicTranslationRecovery.songIDs(for: request)
-            : [:]
-
         var results: [LyricsSearchResult] = []
         var attemptedTranslationRecoveries = 0
+        var qqMusicIDs: [String: String]?
         for try await lyrics in provider.lyrics(for: kitRequest) {
             guard var document = Self.convert(lyrics, providerID: providerID) else {
                 continue
@@ -39,7 +36,10 @@ final class LyricsKitLyricsService: LyricsSearchService {
                needsTranslationRecovery(document),
                attemptedTranslationRecoveries < translationRecoveryCandidateLimit,
                let songMID = lyrics.metadata.serviceToken {
-                let songIDs = await qqMusicIDs
+                if qqMusicIDs == nil {
+                    qqMusicIDs = await QQMusicTranslationRecovery.songIDs(for: request)
+                }
+                let songIDs = qqMusicIDs ?? [:]
                 if let songID = songIDs[songMID] {
                     attemptedTranslationRecoveries += 1
                     if let recoveredTranslations = await QQMusicTranslationRecovery.translations(for: songID) {

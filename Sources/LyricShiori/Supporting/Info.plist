@@ -14,8 +14,45 @@
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
     <string>0.1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>lrcs</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>LyricShiori Lyrics</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.lyricshiori.lrcs</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>LyricShiori Lyrics</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.lyricshiori.lrcs</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>lrcs</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>

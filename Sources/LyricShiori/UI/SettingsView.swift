@@ -88,15 +88,15 @@ private struct CurrentLyricsSettingsView: View {
             LyricsDetailView(store: store)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.lrcx]) { result in
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.lrcs]) { result in
             if case .success(let url) = result {
                 store.importLyrics(from: url)
             }
         }
         .fileExporter(
             isPresented: $exporting,
-            document: LyricsFileDocument(text: store.currentLyrics?.lrcx ?? ""),
-            contentType: .lrcx,
+            document: LyricsFileDocument(text: store.currentLyrics?.lrcs ?? ""),
+            contentType: .lrcs,
             defaultFilename: store.playback.track?.title ?? "Lyrics"
         ) { _ in }
     }

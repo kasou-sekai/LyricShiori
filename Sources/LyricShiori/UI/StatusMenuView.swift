@@ -74,6 +74,12 @@ private struct CurrentTrackSummary: View {
                 .font(.headline)
             Text(store.playback.track?.artist ?? store.playback.status.rawValue.capitalized)
                 .foregroundStyle(.secondary)
+            if let source = store.currentLyrics?.sourceName, !source.isEmpty {
+                Label("Lyrics: \(source)", systemImage: "shippingbox")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             if store.shouldDisplayLyrics,
                let line = store.currentLineIndex.flatMap({ store.currentLyrics?.lines[$0] }) {
                 Text(store.originalLineText(for: line))

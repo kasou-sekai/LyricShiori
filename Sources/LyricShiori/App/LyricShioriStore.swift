@@ -108,7 +108,6 @@ final class LyricShioriStore {
     func start() {
         installSpotifyPlaybackObserver()
         syncFullScreenPlayingConnection()
-        hydrateLocalLyricsFromSharedCache()
         syncDesktopLyricsWindow()
         playerTask?.cancel()
         playerTask = Task { [weak self] in
@@ -120,10 +119,11 @@ final class LyricShioriStore {
         lyricClockTask?.cancel()
         lyricClockTask = Task { [weak self] in
             while !Task.isCancelled {
-                await MainActor.run {
-                    self?.updateCurrentLine()
-                }
-                try? await Task.sleep(for: .milliseconds(16))
+                self?.updateCurrentLine()
+                let interval = self?.playback.status == .playing && self?.currentLyrics != nil
+                    ? 33
+                    : 500
+                try? await Task.sleep(for: .milliseconds(interval))
             }
         }
     }
@@ -181,11 +181,22 @@ final class LyricShioriStore {
         // Re-sync here so a successfully loaded cache can show the window again.
         syncDesktopLyricsWindow()
         guard !currentLyricsBlocksAutomaticSearch else { return }
-        guard !settings.connectFullScreenPlaying else { return }
-
         let searchID = activeSearchID
         let trackSignature = track.signature
         searchTask = Task { [weak self] in
+            // Give the extension a short discovery window. This is bounded: a
+            // missing or unresponsive extension must never suppress Shiori's
+            // own providers indefinitely.
+            if self?.settings.connectFullScreenPlaying == true {
+                try? await Task.sleep(for: .seconds(1))
+                let deadline = ContinuousClock.now + .seconds(9)
+                while !Task.isCancelled,
+                      ContinuousClock.now < deadline,
+                      self?.sharedLyricsCacheServer.hasActiveLease(for: track.id) == true {
+                    try? await Task.sleep(for: .milliseconds(400))
+                }
+            }
+            guard !Task.isCancelled else { return }
             await self?.searchLyricsForCurrentTrack(searchID: searchID, trackSignature: trackSignature)
         }
     }
@@ -241,17 +252,22 @@ final class LyricShioriStore {
         )
         let mode: LyricsCandidateMatcher.Mode = acceptFirstResult ? .strictAutomatic : .rankedManual
         let referenceDocument = spotifyReferenceDocument(matching: request)
+        let preciseMatcher = LyricsCandidateMatcher(
+            request: request,
+            referenceDocument: referenceDocument,
+            mode: mode
+        )
         var collected = await searchProviders(
             request: request,
-            matcher: LyricsCandidateMatcher(request: request, referenceDocument: referenceDocument, mode: mode),
+            matcher: preciseMatcher,
             searchID: searchID,
             requiredTrackSignature: requiredTrackSignature
         )
 
-        // Metadata from streaming players often uses a character name, alias, or
-        // featured artist that the lyric service does not know. If the precise
-        // query produces nothing, retry the providers with the title alone.
-        if collected.isEmpty, !cleanTitle.isEmpty,
+        // Manual search always includes a second title-only query. Provider
+        // relevance is used for ordering only; weakly related results remain
+        // visible so the user can choose alternate/live/aliased versions.
+        if (!acceptFirstResult || collected.isEmpty), !cleanTitle.isEmpty,
            !Task.isCancelled,
            isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) {
             let broadRequest = ShioriLyricsSearchRequest(
@@ -261,12 +277,13 @@ final class LyricShioriStore {
                 duration: duration,
                 limit: request.limit
             )
-            collected = await searchProviders(
+            let broadResults = await searchProviders(
                 request: broadRequest,
                 matcher: LyricsCandidateMatcher(request: broadRequest, referenceDocument: referenceDocument, mode: mode),
                 searchID: searchID,
                 requiredTrackSignature: requiredTrackSignature
             )
+            collected = mergedSearchResults(collected + broadResults).sorted(by: preciseMatcher.sort)
         }
 
         guard !Task.isCancelled, isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) else { return }
@@ -312,14 +329,13 @@ final class LyricShioriStore {
     private func searchWithRetry(
         _ service: LyricsSearchService,
         request: ShioriLyricsSearchRequest,
-        maximumAttempts: Int = 3
+        maximumAttempts: Int = 2
     ) async -> [LyricsSearchResult] {
         for attempt in 0..<maximumAttempts where !Task.isCancelled {
             do {
-                let results = try await service.search(request)
-                if !results.isEmpty {
-                    return results
-                }
+                // An empty successful response is authoritative. Retrying it
+                // only repeats the same public API request and delays fallback.
+                return try await service.search(request)
             } catch {
                 // The next retry or provider fallback is intentionally silent.
             }
@@ -329,6 +345,21 @@ final class LyricShioriStore {
             }
         }
         return []
+    }
+
+    private func mergedSearchResults(_ results: [LyricsSearchResult]) -> [LyricsSearchResult] {
+        var seen: Set<String> = []
+        return results.filter { result in
+            let sample = result.document.lines.prefix(3).map(\.content).joined(separator: "\u{1f}")
+            let key = [
+                result.provider.rawValue,
+                result.title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current),
+                result.artist.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current),
+                String(Int((result.duration ?? 0).rounded())),
+                sample,
+            ].joined(separator: "\u{1e}")
+            return seen.insert(key).inserted
+        }
     }
 
     private func isCurrentSearch(_ searchID: UUID?, requiredTrackSignature: String?) -> Bool {
@@ -350,7 +381,7 @@ final class LyricShioriStore {
         copy.sourceName = sourceName ?? copy.sourceName
         copy.selectionState = isManualSelection
             ? .manual(origin: sourceName == LyricsProviderID.local.rawValue ? .local : .manualSelection)
-            : .automaticSearch(cachedWithoutPlugin: !settings.connectFullScreenPlaying)
+            : .automaticSearch(cachedWithoutPlugin: true)
         copy.needsPersist = true
         applyDesktopLyricsColors(from: copy)
         if isManualSelection, let track {
@@ -379,7 +410,9 @@ final class LyricShioriStore {
         do {
             document.desktopLyricsColors = currentDesktopLyricsColors()
             currentLyrics = document
-            _ = try localLyricsStorage().save(document, for: track)
+            if document.selectionState.cacheSource == .manual {
+                _ = try localLyricsStorage().save(document, for: track)
+            }
             try sharedLyricsCache.save(document, for: track)
             currentLyrics?.needsPersist = false
         } catch {
@@ -387,7 +420,7 @@ final class LyricShioriStore {
         }
     }
 
-    /// Saves the current desktop lyric appearance into the active LRCX file.
+    /// Saves the current desktop lyric appearance into the active LRCS file.
     func persistDesktopLyricsColors() {
         guard var document = currentLyrics else { return }
         document.desktopLyricsColors = currentDesktopLyricsColors()
@@ -576,9 +609,9 @@ final class LyricShioriStore {
         let palette = desktopLyricsPalette()
         return DesktopLyricsColors(
             preset: settings.desktopLyricsColorPreset.rawValue,
-            unplayedColor: palette.pending.lrcxRGBAHex,
-            playedColor: palette.played.lrcxRGBAHex,
-            outlineColor: palette.shadow.lrcxRGBAHex
+            unplayedColor: palette.pending.lrcsRGBAHex,
+            playedColor: palette.played.lrcsRGBAHex,
+            outlineColor: palette.shadow.lrcsRGBAHex
         )
     }
 
@@ -587,13 +620,13 @@ final class LyricShioriStore {
         if let preset = colors.preset.flatMap(DesktopLyricsColorPreset.init(rawValue:)) {
             settings.desktopLyricsColorPreset = preset
         }
-        if let unplayed = Color(lrcxRGBAHex: colors.unplayedColor) {
+        if let unplayed = Color(lrcsRGBAHex: colors.unplayedColor) {
             settings.desktopLyricsColor = unplayed
         }
-        if let played = Color(lrcxRGBAHex: colors.playedColor) {
+        if let played = Color(lrcsRGBAHex: colors.playedColor) {
             settings.desktopLyricsProgressColor = played
         }
-        if let outline = Color(lrcxRGBAHex: colors.outlineColor) {
+        if let outline = Color(lrcsRGBAHex: colors.outlineColor) {
             settings.desktopLyricsShadowColor = outline
         }
     }
@@ -763,14 +796,10 @@ final class LyricShioriStore {
             // restarted desktop app must immediately reuse lyrics that the
             // extension has already cached instead of waiting for another POST.
             if let shared = try sharedLyricsCache.loadDocument(for: track) {
-                useCachedLyrics(shared, for: track, persistLocal: true, syncShared: false)
+                useCachedLyrics(shared, for: track, persistLocal: false, syncShared: false)
                 return
             }
 
-            // With the bridge connected, Full-Screen-Playing is the sole
-            // automatic external-lyrics requester. LyricShiori only waits for
-            // a future bridge update after both local cache layers miss.
-            if settings.connectFullScreenPlaying { return }
         } catch {
             lastError = error.localizedDescription
         }
@@ -800,10 +829,6 @@ final class LyricShioriStore {
             syncDesktopLyricsWindow()
             return
         }
-        if let cached = try? sharedLyricsCache.bestLocalPersistenceDocument(for: entry.trackUri) {
-            persistLocalLyrics(cached.document, for: cached.track)
-        }
-
         guard settings.connectFullScreenPlaying,
               playback.track?.id == entry.trackUri,
               let track = playback.track else {
@@ -819,9 +844,6 @@ final class LyricShioriStore {
     func setFullScreenPlayingConnectionEnabled(_ enabled: Bool) {
         settings.connectFullScreenPlaying = enabled
         syncFullScreenPlayingConnection()
-        if enabled {
-            hydrateLocalLyricsFromSharedCache()
-        }
         Task { await currentTrackChanged() }
     }
 
@@ -834,22 +856,13 @@ final class LyricShioriStore {
     }
 
     private func persistLocalLyrics(_ document: LyricsDocument, for track: TrackIdentity) {
+        guard document.selectionState.cacheSource == .manual else { return }
         do {
             var copy = document
             if copy.desktopLyricsColors == nil {
                 copy.desktopLyricsColors = currentDesktopLyricsColors()
             }
             _ = try localLyricsStorage().save(copy, for: track)
-        } catch {
-            lastError = error.localizedDescription
-        }
-    }
-
-    private func hydrateLocalLyricsFromSharedCache() {
-        do {
-            for cached in try sharedLyricsCache.localPersistenceDocuments() {
-                persistLocalLyrics(cached.document, for: cached.track)
-            }
         } catch {
             lastError = error.localizedDescription
         }
@@ -869,7 +882,6 @@ final class LyricShioriStore {
     }
 
     private var shouldAcceptAutomaticSearchResult: Bool {
-        guard !settings.connectFullScreenPlaying else { return false }
         guard currentLyrics != nil else { return true }
         return !currentLyricsBlocksAutomaticSearch
     }
@@ -893,7 +905,7 @@ final class LyricShioriStore {
 }
 
 private extension Color {
-    var lrcxRGBAHex: String {
+    var lrcsRGBAHex: String {
         guard let color = NSColor(self).usingColorSpace(.sRGB) else { return "#FFFFFFFF" }
         return String(
             format: "#%02X%02X%02X%02X",
@@ -904,7 +916,7 @@ private extension Color {
         )
     }
 
-    init?(lrcxRGBAHex value: String) {
+    init?(lrcsRGBAHex value: String) {
         let hex = value.trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "#"))
         guard hex.count == 6 || hex.count == 8,

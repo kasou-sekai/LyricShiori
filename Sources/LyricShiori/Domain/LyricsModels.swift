@@ -1,6 +1,6 @@
 import Foundation
 
-struct TrackIdentity: Identifiable, Equatable, Codable, Hashable {
+struct TrackIdentity: Identifiable, Equatable, Codable, Hashable, Sendable {
     var id: String
     var title: String
     var artist: String
@@ -34,7 +34,7 @@ struct TrackIdentity: Identifiable, Equatable, Codable, Hashable {
     }
 }
 
-enum PlaybackStatus: String, Codable, CaseIterable, Identifiable {
+enum PlaybackStatus: String, Codable, CaseIterable, Identifiable, Sendable {
     case stopped
     case playing
     case paused
@@ -42,7 +42,7 @@ enum PlaybackStatus: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-struct PlaybackSnapshot: Equatable {
+struct PlaybackSnapshot: Equatable, Sendable {
     var track: TrackIdentity?
     var status: PlaybackStatus
     var elapsedTime: TimeInterval
@@ -70,14 +70,14 @@ struct LyricsDocument: Identifiable, Equatable {
     var localURL: URL?
     var needsPersist: Bool
     var selectionState: LyricsSelectionState = .automaticSearch(cachedWithoutPlugin: false)
-    /// Optional per-lyric display data persisted in the LRCX `desktopLyricsColors` field.
+    /// Optional per-lyric display data persisted in the LRCS `desktopLyricsColors` field.
     var desktopLyricsColors: DesktopLyricsColors? = nil
 
     var adjustedDelay: TimeInterval {
         TimeInterval(offsetMilliseconds) / 1000
     }
 
-    var lrcx: String {
+    var lrcs: String {
         LyricsCacheFile.encodedString(document: self, track: nil)
     }
 

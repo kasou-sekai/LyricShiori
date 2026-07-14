@@ -13,7 +13,7 @@ struct LyricsDetailView: View {
             if let lyrics = store.currentLyrics {
                 ScrollLyricsList(store: store, lyrics: lyrics)
             } else {
-                ContentUnavailableView("No Lyrics", systemImage: "text.quote", description: Text("Import an LRCX file or search for lyrics."))
+                ContentUnavailableView("No Lyrics", systemImage: "text.quote", description: Text("Import an LRCS file or search for lyrics."))
             }
         }
     }
@@ -175,7 +175,7 @@ struct ScrollLyricsList: View {
 }
 
 struct LyricsFileDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.lrcx] }
+    static var readableContentTypes: [UTType] { [.lrcs] }
     var text: String
 
     init(text: String) {
@@ -196,5 +196,5 @@ struct LyricsFileDocument: FileDocument {
 }
 
 extension UTType {
-    static let lrcx = UTType(exportedAs: "com.lyricshiori.lrcx", conformingTo: .plainText)
+    static let lrcs = UTType(exportedAs: "com.lyricshiori.lrcs", conformingTo: .plainText)
 }

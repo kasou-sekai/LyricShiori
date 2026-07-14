@@ -1,6 +1,7 @@
 import Foundation
 
 enum LyricsBridgeTrace {
+    private static let isEnabled = ProcessInfo.processInfo.environment["LYRICSHIORI_BRIDGE_TRACE"] == "1"
     private static let lock = NSLock()
     private static let maximumBytes = 1_000_000
     private static let retainedLines = 400
@@ -14,6 +15,7 @@ enum LyricsBridgeTrace {
     }
 
     static func record(event: String, entry: SharedLyricsCache.Entry, detail: String? = nil) {
+        guard isEnabled else { return }
         let lines = entry.lines
         record(
             event: event,
@@ -30,6 +32,7 @@ enum LyricsBridgeTrace {
     }
 
     static func record(event: String, document: LyricsDocument, track: TrackIdentity, detail: String? = nil) {
+        guard isEnabled else { return }
         let lines = document.lines
         record(
             event: event,

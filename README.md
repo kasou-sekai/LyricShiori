@@ -13,6 +13,6 @@ Current scope:
 - Spotify playback reading and control.
 - NetEase Cloud Music and QQ Music lyrics search.
 - Bookmark menu bar entry, desktop lyrics window, and lyrics controls in Settings.
-- Local LRCX import and export.
+- Local LRCS import and export.
 
 Spotify access uses macOS Automation. Open Settings in LyricShiori and click "Authorize Spotify" to trigger the system prompt. If it still does not appear, run the app as a real macOS app bundle from Xcode, not as a raw SwiftPM executable, so macOS can register LyricShiori as the requesting app.
