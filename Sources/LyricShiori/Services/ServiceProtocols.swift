@@ -14,6 +14,14 @@ protocol MusicPlayerService: AnyObject {
 @MainActor
 protocol SpotifyAuthorizationService: AnyObject {
     func requestAccess() async throws
+    func authorizationStatus() async -> SpotifyAuthorizationStatus
+}
+
+enum SpotifyAuthorizationStatus: Sendable {
+    case granted
+    case denied
+    case notRequested
+    case spotifyNotRunning
 }
 
 @MainActor

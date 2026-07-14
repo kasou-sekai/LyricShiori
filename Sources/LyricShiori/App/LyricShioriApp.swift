@@ -14,7 +14,9 @@ struct LyricShioriApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Search Lyrics", id: "search-lyrics") {
+        // A value-based window group is created only through `openWindow`.
+        // This keeps the menu-bar app from opening the search window at launch.
+        WindowGroup("Search Lyrics", id: "search-lyrics", for: String.self) { _ in
             SearchLyricsView(store: store)
                 .frame(minWidth: 640, minHeight: 440)
         }
@@ -38,7 +40,7 @@ private struct LyricShioriCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .appInfo) {
             Button("Search Lyrics") {
-                openWindow(id: "search-lyrics")
+                openWindow(id: "search-lyrics", value: "manual-search")
                 WindowActivator.bringToFront(titleContaining: "Search Lyrics")
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])

@@ -16,7 +16,12 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
         let popover = NSPopover()
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: StatusMenuView(store: store))
+        let contentController = NSHostingController(rootView: StatusMenuView(store: store))
+        // The current-track summary grows when lyrics are present. Let AppKit
+        // observe SwiftUI's preferred size so the popover is remeasured instead
+        // of retaining the shorter, no-lyrics height and clipping both ends.
+        contentController.sizingOptions = [.preferredContentSize]
+        popover.contentViewController = contentController
         self.popover = popover
 
         super.init()
@@ -311,7 +316,11 @@ private struct MenuBarLyric {
 
 private enum MenuBarLogo {
     static let image: NSImage? = {
-        guard let url = Bundle.module.url(forResource: "emoji-bookmark-template", withExtension: "png"),
+        // Packaged apps keep resources in Contents/Resources. The SwiftPM
+        // module bundle remains the fallback for command-line/dev builds.
+        let url = Bundle.main.url(forResource: "emoji-bookmark-template", withExtension: "png")
+            ?? Bundle.module.url(forResource: "emoji-bookmark-template", withExtension: "png")
+        guard let url,
               let image = NSImage(contentsOf: url) else {
             return NSImage(systemSymbolName: "bookmark.fill", accessibilityDescription: "LyricShiori")
         }

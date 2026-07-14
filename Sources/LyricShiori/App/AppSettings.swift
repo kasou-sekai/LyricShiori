@@ -31,7 +31,9 @@ final class AppSettings {
 
     var disableLyricsWhenPaused: Bool = true { didSet { save(disableLyricsWhenPaused, Keys.disableLyricsWhenPaused) } }
     var disableLyricsWhenScreenShot: Bool = true { didSet { save(disableLyricsWhenScreenShot, Keys.disableLyricsWhenScreenShot) } }
-    var hideLyricsWhenMousePassingBy: Bool = true { didSet { save(hideLyricsWhenMousePassingBy, Keys.hideLyricsWhenMousePassingBy) } }
+    // On a first launch, keep the lyrics movable without making them disappear
+    // as soon as the pointer reaches them. Existing saved preferences are kept.
+    var hideLyricsWhenMousePassingBy: Bool = false { didSet { save(hideLyricsWhenMousePassingBy, Keys.hideLyricsWhenMousePassingBy) } }
 
     var lyricsFilterEnabled: Bool = true { didSet { save(lyricsFilterEnabled, Keys.lyricsFilterEnabled) } }
     var lyricsSmartFilterEnabled: Bool = true { didSet { save(lyricsSmartFilterEnabled, Keys.lyricsSmartFilterEnabled) } }

@@ -74,7 +74,7 @@ private struct CurrentLyricsSettingsView: View {
                 }
                 .disabled(store.currentLyrics == nil)
                 Button {
-                    openWindow(id: "search-lyrics")
+                    openWindow(id: "search-lyrics", value: "manual-search")
                     WindowActivator.bringToFront(titleContaining: "Search Lyrics")
                 } label: {
                     Label("Search", systemImage: "magnifyingglass")
@@ -108,12 +108,29 @@ private struct GeneralSettingsView: View {
     var body: some View {
         Form {
             Section("Playback") {
-                LabeledContent("Player", value: "Spotify")
-                LabeledContent("Spotify access", value: store.spotifyAccessMessage)
-                Button {
-                    Task { await store.requestSpotifyAccess() }
-                } label: {
-                    Label("Authorize Spotify", systemImage: "lock.open")
+                HStack {
+                    Text("Spotify access")
+                    Button {
+                        Task { await store.requestSpotifyAccess() }
+                    } label: {
+                        Label("Authorize Spotify", systemImage: "lock.open")
+                    }
+                    Spacer()
+                    ConnectionStatusIndicator(
+                        text: store.spotifyAccessMessage,
+                        color: spotifyAccessStatusColor
+                    )
+                }
+                HStack {
+                    Toggle("Connect to Full-Screen Playing plugin", isOn: Binding(
+                        get: { store.settings.connectFullScreenPlaying },
+                        set: { store.setFullScreenPlayingConnectionEnabled($0) }
+                    ))
+                    Spacer()
+                    ConnectionStatusIndicator(
+                        text: pluginConnectionStatusText,
+                        color: pluginConnectionStatusColor
+                    )
                 }
             }
 
@@ -176,6 +193,49 @@ private struct GeneralSettingsView: View {
                 store.settings.customLyricsSavingPath = url
             }
         }
+    }
+
+    private var spotifyAccessStatusColor: Color {
+        switch store.spotifyAccessPresentationState {
+        case .granted:
+            .green
+        case .denied, .error:
+            .red
+        case .notRequested:
+            .orange
+        case .spotifyNotRunning:
+            .gray
+        case .checking:
+            .blue
+        }
+    }
+
+    private var pluginConnectionStatusColor: Color {
+        guard store.settings.connectFullScreenPlaying else { return .gray }
+        return store.isFullScreenPlayingPluginConnected ? .green : .orange
+    }
+
+    private var pluginConnectionStatusText: String {
+        guard store.settings.connectFullScreenPlaying else { return "Disabled" }
+        return store.isFullScreenPlayingPluginConnected ? "Plugin connected" : "Waiting for plugin"
+    }
+}
+
+private struct ConnectionStatusIndicator: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+            Text(text)
+                .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 160, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(text)
     }
 }
 
@@ -364,14 +424,12 @@ private struct SourceSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Search") {
-                Toggle("Sync with Full-Screen Playing", isOn: Binding(
-                    get: { store.settings.connectFullScreenPlaying },
-                    set: { store.setFullScreenPlayingConnectionEnabled($0) }
-                ))
-            }
-
-            Section("Enabled sources") {
+            Section("Lyrics sources") {
+                if store.settings.connectFullScreenPlaying {
+                    Label("Full-Screen Playing plugin", systemImage: "puzzlepiece.extension.fill")
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Full-Screen Playing plugin source is enabled")
+                }
                 ForEach([LyricsProviderID.netease, .qqMusic]) { provider in
                     Toggle(provider.rawValue, isOn: Binding(
                         get: { store.settings.enabledProviders.contains(provider) },

@@ -34,6 +34,15 @@ struct DesktopLyricsPalette: Equatable {
     }
 }
 
+enum SpotifyAccessPresentationState {
+    case checking
+    case granted
+    case denied
+    case notRequested
+    case spotifyNotRunning
+    case error
+}
+
 extension DesktopLyricsColorPreset {
     /// All presets use a dark, near-opaque outline. This keeps the bright lyric
     /// colours legible on light wallpapers without sacrificing dark wallpapers.
@@ -67,7 +76,9 @@ final class LyricShioriStore {
     var searchResults: [LyricsSearchResult] = []
     var lastError: String?
     var isSearching = false
-    var spotifyAccessMessage = "Not requested"
+    var spotifyAccessMessage = "Checking…"
+    var spotifyAccessPresentationState: SpotifyAccessPresentationState = .checking
+    var isFullScreenPlayingPluginConnected = false
     var isDesktopLyricsDragging = false
 
     @ObservationIgnored private let conversion: ChineseConversionService
@@ -76,6 +87,7 @@ final class LyricShioriStore {
     private var playerServices: [PlayerKind: MusicPlayerService]
     private var lyricsServices: [LyricsProviderID: LyricsSearchService]
     private var playerTask: Task<Void, Never>?
+    private var pluginConnectionTask: Task<Void, Never>?
     private var lyricClockTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var activeSearchID = UUID()
@@ -108,12 +120,21 @@ final class LyricShioriStore {
     func start() {
         installSpotifyPlaybackObserver()
         syncFullScreenPlayingConnection()
+        refreshFullScreenPlayingPluginConnectionStatus()
+        Task { await refreshSpotifyAuthorizationStatus() }
         syncDesktopLyricsWindow()
         playerTask?.cancel()
         playerTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshPlayback()
                 try? await Task.sleep(for: .seconds(1))
+            }
+        }
+        pluginConnectionTask?.cancel()
+        pluginConnectionTask = Task { [weak self] in
+            while !Task.isCancelled {
+                self?.refreshFullScreenPlayingPluginConnectionStatus()
+                try? await Task.sleep(for: .milliseconds(500))
             }
         }
         lyricClockTask?.cancel()
@@ -130,6 +151,7 @@ final class LyricShioriStore {
 
     func stop() {
         playerTask?.cancel()
+        pluginConnectionTask?.cancel()
         lyricClockTask?.cancel()
         searchTask?.cancel()
         sharedLyricsCacheServer.stop()
@@ -161,6 +183,9 @@ final class LyricShioriStore {
         playback = next
         updateCurrentLine()
         syncDesktopLyricsWindow()
+        if spotifyAccessMessage == "Open Spotify to check" {
+            await refreshSpotifyAuthorizationStatus()
+        }
         if previousTrackSignature != next.track?.signature {
             await currentTrackChanged()
         }
@@ -495,10 +520,35 @@ final class LyricShioriStore {
             }
             try await service.requestAccess()
             spotifyAccessMessage = "Granted"
+            spotifyAccessPresentationState = .granted
             await refreshPlayback()
         } catch {
             spotifyAccessMessage = error.localizedDescription
+            spotifyAccessPresentationState = {
+                if case ServiceError.automationDenied = error { return .denied }
+                return .error
+            }()
             lastError = error.localizedDescription
+        }
+    }
+
+    func refreshSpotifyAuthorizationStatus() async {
+        guard let service = playerServices[.spotify] as? SpotifyAuthorizationService else { return }
+        switch await service.authorizationStatus() {
+        case .granted:
+            spotifyAccessMessage = "Granted"
+            spotifyAccessPresentationState = .granted
+        case .denied:
+            spotifyAccessMessage = "Denied"
+            spotifyAccessPresentationState = .denied
+        case .notRequested:
+            spotifyAccessMessage = "Not requested"
+            spotifyAccessPresentationState = .notRequested
+        case .spotifyNotRunning:
+            // Do not claim that access is missing merely because macOS cannot
+            // inspect a target app which is not currently running.
+            spotifyAccessMessage = "Open Spotify to check"
+            spotifyAccessPresentationState = .spotifyNotRunning
         }
     }
 
@@ -844,6 +894,7 @@ final class LyricShioriStore {
     func setFullScreenPlayingConnectionEnabled(_ enabled: Bool) {
         settings.connectFullScreenPlaying = enabled
         syncFullScreenPlayingConnection()
+        refreshFullScreenPlayingPluginConnectionStatus()
         Task { await currentTrackChanged() }
     }
 
@@ -853,6 +904,11 @@ final class LyricShioriStore {
         } else {
             sharedLyricsCacheServer.stop()
         }
+    }
+
+    private func refreshFullScreenPlayingPluginConnectionStatus() {
+        isFullScreenPlayingPluginConnected = settings.connectFullScreenPlaying
+            && sharedLyricsCacheServer.hasActiveConnection()
     }
 
     private func persistLocalLyrics(_ document: LyricsDocument, for track: TrackIdentity) {

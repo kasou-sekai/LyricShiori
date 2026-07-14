@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import Foundation
 
 @MainActor
@@ -47,6 +48,37 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
             return player state as string
         end tell
         """)
+    }
+
+    /// Checks TCC's Automation decision without sending an event or presenting
+    /// a permission prompt. Apple requires the target app to be running for
+    /// this check, so the caller can give a useful status in that case.
+    func authorizationStatus() async -> SpotifyAuthorizationStatus {
+        guard let spotify = NSWorkspace.shared.runningApplications.first(where: {
+            $0.bundleIdentifier == "com.spotify.client"
+        }) else {
+            return .spotifyNotRunning
+        }
+
+        return await Task.detached(priority: .utility) {
+            Self.authorizationStatus(for: spotify.processIdentifier)
+        }.value
+    }
+
+    private nonisolated static func authorizationStatus(for processIdentifier: pid_t) -> SpotifyAuthorizationStatus {
+        let target = NSAppleEventDescriptor(processIdentifier: processIdentifier)
+        guard let address = target.aeDesc else { return .notRequested }
+
+        switch AEDeterminePermissionToAutomateTarget(address, typeWildCard, typeWildCard, false) {
+        case noErr:
+            return .granted
+        case OSStatus(errAEEventNotPermitted):
+            return .denied
+        case OSStatus(errAEEventWouldRequireUserConsent):
+            return .notRequested
+        default:
+            return .notRequested
+        }
     }
 
     private nonisolated static func runSnapshotScript() throws -> PlaybackSnapshot {

@@ -7,7 +7,7 @@ struct StatusMenuView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack {
+        VStack(spacing: 5) {
             CurrentTrackSummary(store: store)
 
             Divider()
@@ -19,7 +19,7 @@ struct StatusMenuView: View {
                 }
 
             Button("Search Lyrics") {
-                openWindow(id: "search-lyrics")
+                openWindow(id: "search-lyrics", value: "manual-search")
                 WindowActivator.bringToFront(titleContaining: "Search Lyrics")
                 dismiss()
             }
@@ -55,6 +55,7 @@ struct StatusMenuView: View {
             }
         }
         .padding(.vertical, 4)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var offsetBinding: Binding<Int> {

@@ -718,6 +718,16 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         }
     }
 
+    /// A recent bridge-state heartbeat means the Full-Screen Playing plugin is
+    /// currently connected, even when it is reporting a different track.
+    func hasActiveConnection() -> Bool {
+        stateLock.withLock {
+            let now = nowMilliseconds()
+            activeLeases = activeLeases.filter { $0.value > now }
+            return !activeLeases.isEmpty
+        }
+    }
+
     private func handle(_ connection: NWConnection) {
         connection.start(queue: .global(qos: .utility))
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5) {
