@@ -5,6 +5,7 @@ import LyricsKit
 final class LyricsKitLyricsService: LyricsSearchService {
     let providerID: LyricsProviderID
     private let provider: LyricsProvider
+    private let translationRecoveryCandidateLimit = 4
 
     init(providerID: LyricsProviderID) {
         self.providerID = providerID
@@ -24,11 +25,30 @@ final class LyricsKitLyricsService: LyricsSearchService {
             duration: request.duration ?? 0,
             limit: request.limit
         )
+        async let qqMusicIDs: [String: String] = providerID == .qqMusic
+            ? QQMusicTranslationRecovery.songIDs(for: request)
+            : [:]
 
         var results: [LyricsSearchResult] = []
+        var attemptedTranslationRecoveries = 0
         for try await lyrics in provider.lyrics(for: kitRequest) {
-            guard let document = Self.convert(lyrics, providerID: providerID) else {
+            guard var document = Self.convert(lyrics, providerID: providerID) else {
                 continue
+            }
+            if providerID == .qqMusic,
+               needsTranslationRecovery(document),
+               attemptedTranslationRecoveries < translationRecoveryCandidateLimit,
+               let songMID = lyrics.metadata.serviceToken {
+                let songIDs = await qqMusicIDs
+                if let songID = songIDs[songMID] {
+                    attemptedTranslationRecoveries += 1
+                    if let recoveredTranslations = await QQMusicTranslationRecovery.translations(for: songID) {
+                        document = QQMusicTranslationRecovery.applying(
+                            recoveredTranslations,
+                            to: document
+                        )
+                    }
+                }
             }
             results.append(
                 LyricsSearchResult(
@@ -45,6 +65,13 @@ final class LyricsKitLyricsService: LyricsSearchService {
         return results
     }
 
+    private func needsTranslationRecovery(_ document: LyricsDocument) -> Bool {
+        let translatedLineCount = document.lines.count {
+            !($0.translations["default"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        }
+        return translatedLineCount > 0 && translatedLineCount < document.lines.count
+    }
+
     nonisolated static func convert(_ lyrics: LyricsKit.Lyrics, providerID: LyricsProviderID) -> LyricsDocument? {
         guard !lyrics.lines.isEmpty else {
             return nil
@@ -53,7 +80,7 @@ final class LyricsKitLyricsService: LyricsSearchService {
         let lines = lyrics.lines.map { line in
             var translations: [String: String] = [:]
             if let translation = line.attachments.translation() {
-                translations["default"] = translation
+                translations["default"] = cleanTranslation(translation)
             }
             return LyricsLine(
                 position: line.position,
@@ -80,6 +107,19 @@ final class LyricsKitLyricsService: LyricsSearchService {
         )
         document.metadata.languageCode = LyricsLanguageRecognizer.recognize(in: lines.map(\.content).joined(separator: "\n"))
         return LyricsContentNormalizer.removingLeadingMetadata(from: document)
+    }
+
+    private nonisolated static func cleanTranslation(_ value: String) -> String {
+        // Some QQ responses contain an extra closing bracket immediately after
+        // a timestamp (for example `[04:07.58]]translation`). The timestamp
+        // parser has already consumed the first bracket, so do not surface the
+        // remaining one as part of the translated lyric.
+        var cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        while cleaned.hasPrefix("]") {
+            cleaned.removeFirst()
+            cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return cleaned
     }
 
     private nonisolated static func wordTimings(from line: LyricsKit.LyricsLine) -> [WordTiming] {
