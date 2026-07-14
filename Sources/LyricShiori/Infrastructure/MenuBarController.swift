@@ -216,26 +216,40 @@ private struct MenuBarLyricsTicker: View {
             let viewportWidth = proxy.size.width
             let overflow = max(0, contentWidth - viewportWidth)
 
-            TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !lyric.isPlaying)) { context in
-                Text(lyric.text)
-                    .font(.system(size: Self.fontSize))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .background(
-                        GeometryReader { contentProxy in
-                            Color.clear.preference(
-                                key: MenuBarLyricsWidthPreferenceKey.self,
-                                value: contentProxy.size.width
-                            )
-                        }
-                    )
-                    .offset(
-                        x: overflow > 1
-                            ? -overflow * timedScrollPhase(at: context.date)
-                            : 0
-                    )
-                    .frame(width: viewportWidth, height: proxy.size.height, alignment: .leading)
-                    .clipped()
+            ZStack {
+                TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !lyric.isPlaying)) { context in
+                    Text(lyric.text)
+                        .font(.system(size: Self.fontSize))
+                        .lineLimit(1)
+                        // Keep the text at its natural line height. The status
+                        // item only needs to crop horizontal scrolling overflow;
+                        // constraining both axes here cuts CJK glyphs at the top
+                        // and bottom on some menu-bar configurations.
+                        .fixedSize(horizontal: true, vertical: true)
+                        .background(
+                            GeometryReader { contentProxy in
+                                Color.clear.preference(
+                                    key: MenuBarLyricsWidthPreferenceKey.self,
+                                    value: contentProxy.size.width
+                                )
+                            }
+                        )
+                        .offset(
+                            x: overflow > 1
+                                ? -overflow * timedScrollPhase(at: context.date)
+                                : 0
+                        )
+                        .frame(width: viewportWidth, alignment: .leading)
+                }
+            }
+            // This defines the status-bar viewport, not the text line height.
+            // ZStack centers the naturally sized text inside it.
+            .frame(width: viewportWidth, height: proxy.size.height)
+            .mask(alignment: .leading) {
+                // Extend the mask vertically so only overflowing text on the
+                // left and right is hidden.
+                Rectangle()
+                    .frame(width: viewportWidth, height: proxy.size.height + 16)
             }
         }
         .onPreferenceChange(MenuBarLyricsWidthPreferenceKey.self) { width in
