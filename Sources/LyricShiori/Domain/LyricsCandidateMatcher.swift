@@ -1,6 +1,8 @@
 import Foundation
 
 struct LyricsCandidateMatcher {
+    private static let chineseConversion = FoundationChineseConversionService()
+
     enum Mode: Equatable {
         /// Used when the app is about to pick a result without asking the user.
         case strictAutomatic
@@ -204,7 +206,8 @@ struct LyricsCandidateMatcher {
     }
 
     private func normalizeLyricText(_ text: String) -> String {
-        text.precomposedStringWithCompatibilityMapping
+        Self.chineseConversion.convert(text, mode: .simplified)
+            .precomposedStringWithCompatibilityMapping
             .lowercased()
             .replacingOccurrences(of: #"\[[^\]]+\]"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"\([^)]*\)"#, with: "", options: .regularExpression)

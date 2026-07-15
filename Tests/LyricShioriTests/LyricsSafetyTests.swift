@@ -5,6 +5,66 @@ import XCTest
 @testable import LyricShiori
 
 final class LyricsSafetyTests: XCTestCase {
+    func testChineseConversionAndCandidateMatchingAreSimplifiedTraditionalCompatible() {
+        let conversion = FoundationChineseConversionService()
+        XCTAssertEqual(
+            conversion.convert("後臺裏著乾淨頭髮", mode: .simplified),
+            "后台里着干净头发"
+        )
+        XCTAssertEqual(
+            conversion.convert("后台里着干净头发", mode: .traditional),
+            "後台里著乾淨頭髮"
+        )
+
+        let request = ShioriLyricsSearchRequest(
+            title: conversion.convert("後來", mode: .simplified),
+            artist: conversion.convert("陳奕迅", mode: .simplified),
+            album: nil,
+            duration: nil,
+            limit: 8
+        )
+        let result = LyricsSearchResult(
+            provider: .netease,
+            title: "後來",
+            artist: "陳奕迅",
+            duration: nil,
+            document: makeDocument(),
+            quality: 0,
+            isMatched: false
+        )
+        let matched = LyricsCandidateMatcher(
+            request: request,
+            mode: .strictAutomatic
+        ).evaluate(result)
+
+        XCTAssertEqual(request.title, "后来")
+        XCTAssertEqual(request.artist, "陈奕迅")
+        XCTAssertEqual(matched?.isMatched, true)
+    }
+
+    func testSearchDraftPrefillsLatePlaybackAndResetsForEachOpening() {
+        let first = makeTrack(id: "spotify:track:first")
+        var draft = SearchLyricsDraft(track: nil)
+
+        XCTAssertEqual(draft.title, "")
+        XCTAssertEqual(draft.artist, "")
+        draft.prefill(from: first)
+        XCTAssertEqual(draft.title, first.title)
+        XCTAssertEqual(draft.artist, first.artist)
+
+        draft.title = "Manual title"
+        var second = makeTrack(id: "spotify:track:second")
+        second.title = "Second song"
+        second.artist = "Second artist"
+        draft.prefill(from: second)
+        XCTAssertEqual(draft.title, "Manual title")
+        XCTAssertEqual(draft.artist, second.artist)
+
+        let reopenedDraft = SearchLyricsDraft(track: second)
+        XCTAssertEqual(reopenedDraft.title, second.title)
+        XCTAssertEqual(reopenedDraft.artist, second.artist)
+    }
+
     func testWordVerticalTypesetterUsesEastAsianGlyphFormsAndSidewaysWesternRuns() {
         let line = DesktopLyricsDisplayLine(
             id: "vertical-test",

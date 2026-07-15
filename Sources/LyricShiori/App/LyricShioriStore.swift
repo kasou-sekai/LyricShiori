@@ -100,7 +100,7 @@ final class LyricShioriStore {
 
     init(
         settings: AppSettings = AppSettings(),
-        conversion: ChineseConversionService = PassthroughChineseConversionService()
+        conversion: ChineseConversionService = FoundationChineseConversionService()
     ) {
         let sharedLyricsCache = SharedLyricsCache()
         self.settings = settings
@@ -285,6 +285,18 @@ final class LyricShioriStore {
         let cleanArtist = artist.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty || !cleanArtist.isEmpty else { return }
 
+        // Both remote providers rank Simplified Chinese queries more reliably.
+        // Keep the form fields untouched, but normalize every submitted field
+        // at this single boundary so automatic and manual searches agree.
+        let submittedTitle = conversion.convert(cleanTitle, mode: .simplified)
+        let submittedArtist = conversion.convert(cleanArtist, mode: .simplified)
+        let submittedAlbum = album.map {
+            conversion.convert(
+                $0.trimmingCharacters(in: .whitespacesAndNewlines),
+                mode: .simplified
+            )
+        }
+
         isSearching = true
         defer { isSearching = false }
         // Search failures from public lyric providers are common and transient.
@@ -295,9 +307,9 @@ final class LyricShioriStore {
         // A manual search is a chooser, not an automatic decision. Ask each
         // provider for a broad result set so alternate versions remain visible.
         let request = ShioriLyricsSearchRequest(
-            title: cleanTitle,
-            artist: cleanArtist,
-            album: album,
+            title: submittedTitle,
+            artist: submittedArtist,
+            album: submittedAlbum,
             duration: duration,
             limit: acceptFirstResult ? 8 : 50
         )
@@ -318,11 +330,11 @@ final class LyricShioriStore {
         // Manual search always includes a second title-only query. Provider
         // relevance is used for ordering only; weakly related results remain
         // visible so the user can choose alternate/live/aliased versions.
-        if (!acceptFirstResult || collected.isEmpty), !cleanTitle.isEmpty,
+        if (!acceptFirstResult || collected.isEmpty), !submittedTitle.isEmpty,
            !Task.isCancelled,
            isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) {
             let broadRequest = ShioriLyricsSearchRequest(
-                title: cleanTitle,
+                title: submittedTitle,
                 artist: "",
                 album: nil,
                 duration: duration,
@@ -404,8 +416,10 @@ final class LyricShioriStore {
             let sample = result.document.lines.prefix(3).map(\.content).joined(separator: "\u{1f}")
             let key = [
                 result.provider.rawValue,
-                result.title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current),
-                result.artist.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current),
+                conversion.convert(result.title, mode: .simplified)
+                    .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current),
+                conversion.convert(result.artist, mode: .simplified)
+                    .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current),
                 String(Int((result.duration ?? 0).rounded())),
                 sample,
             ].joined(separator: "\u{1e}")
@@ -977,8 +991,14 @@ final class LyricShioriStore {
     private func spotifyReferenceDocument(matching request: ShioriLyricsSearchRequest) -> LyricsDocument? {
         guard settings.connectFullScreenPlaying,
               let track = playback.track,
-              track.title.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(request.title) == .orderedSame,
-              track.artist.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(request.artist) == .orderedSame else {
+              conversion.convert(
+                  track.title.trimmingCharacters(in: .whitespacesAndNewlines),
+                  mode: .simplified
+              ).caseInsensitiveCompare(request.title) == .orderedSame,
+              conversion.convert(
+                  track.artist.trimmingCharacters(in: .whitespacesAndNewlines),
+                  mode: .simplified
+              ).caseInsensitiveCompare(request.artist) == .orderedSame else {
             return nil
         }
         return try? sharedLyricsCache.loadDocument(for: track, kind: .spotify)

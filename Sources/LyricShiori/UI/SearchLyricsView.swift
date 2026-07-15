@@ -4,11 +4,15 @@ struct SearchLyricsView: View {
     @Bindable var store: LyricShioriStore
     var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var artist = ""
-    @State private var didPrefill = false
+    @State private var draft: SearchLyricsDraft
     @State private var selectedResultID: LyricsSearchResult.ID?
     @FocusState private var focusedField: Field?
+
+    init(store: LyricShioriStore, onDismiss: (() -> Void)? = nil) {
+        self.store = store
+        self.onDismiss = onDismiss
+        _draft = State(initialValue: SearchLyricsDraft(track: store.playback.track))
+    }
 
     private enum Field {
         case title
@@ -53,8 +57,13 @@ struct SearchLyricsView: View {
             .navigationSplitViewStyle(.balanced)
         }
         .onAppear {
-            prefillFromCurrentTrackIfNeeded()
-            focusedField = title.isEmpty ? .title : .artist
+            draft.prefill(from: store.playback.track)
+            focusedField = draft.title.isEmpty ? .title : .artist
+        }
+        .onChange(of: store.playback.track?.signature) { _, _ in
+            // Playback may arrive just after the user opens the utility. Fill
+            // fields that are still empty/auto-filled without overwriting edits.
+            draft.prefill(from: store.playback.track)
         }
         .onChange(of: store.searchResults) { _, results in
             guard !results.contains(where: { $0.id == selectedResultID }) else { return }
@@ -73,7 +82,7 @@ struct SearchLyricsView: View {
                 Text("Title")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TextField("Song title", text: $title)
+                TextField("Song title", text: $draft.title)
                     .textFieldStyle(.roundedBorder)
                     .focused($focusedField, equals: .title)
                     .onSubmit(beginSearch)
@@ -82,7 +91,7 @@ struct SearchLyricsView: View {
                 Text("Artist")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TextField("Artist (optional)", text: $artist)
+                TextField("Artist (optional)", text: $draft.artist)
                     .textFieldStyle(.roundedBorder)
                     .focused($focusedField, equals: .artist)
                     .onSubmit(beginSearch)
@@ -105,8 +114,8 @@ struct SearchLyricsView: View {
     }
 
     private var isSearchEmpty: Bool {
-        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && draft.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var resultCountTitle: String {
@@ -123,14 +132,33 @@ struct SearchLyricsView: View {
     private func beginSearch() {
         guard !isSearchEmpty, !store.isSearching else { return }
         selectedResultID = nil
-        Task { await store.searchLyrics(title: title, artist: artist) }
+        Task { await store.searchLyrics(title: draft.title, artist: draft.artist) }
+    }
+}
+
+struct SearchLyricsDraft: Equatable {
+    var title: String
+    var artist: String
+    private var lastAutomaticTitle: String?
+    private var lastAutomaticArtist: String?
+
+    init(track: TrackIdentity?) {
+        title = track?.title ?? ""
+        artist = track?.artist ?? ""
+        lastAutomaticTitle = track?.title
+        lastAutomaticArtist = track?.artist
     }
 
-    private func prefillFromCurrentTrackIfNeeded() {
-        guard !didPrefill, let track = store.playback.track else { return }
-        if title.isEmpty { title = track.title }
-        if artist.isEmpty { artist = track.artist }
-        didPrefill = true
+    mutating func prefill(from track: TrackIdentity?) {
+        guard let track else { return }
+        if title.isEmpty || title == lastAutomaticTitle {
+            title = track.title
+        }
+        if artist.isEmpty || artist == lastAutomaticArtist {
+            artist = track.artist
+        }
+        lastAutomaticTitle = track.title
+        lastAutomaticArtist = track.artist
     }
 }
 
