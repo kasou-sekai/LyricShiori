@@ -1,8 +1,105 @@
+import AppKit
+import CoreText
 import Foundation
 import XCTest
 @testable import LyricShiori
 
 final class LyricsSafetyTests: XCTestCase {
+    func testWordVerticalTypesetterUsesEastAsianGlyphFormsAndSidewaysWesternRuns() {
+        let line = DesktopLyricsDisplayLine(
+            id: "vertical-test",
+            lineID: UUID(),
+            text: "中，don’t Word 2026（）《》！？……",
+            wordTimings: [
+                WordTiming(
+                    start: 0,
+                    duration: 5,
+                    text: "中，don’t Word 2026（）《》！？……"
+                ),
+            ],
+            lineStart: 0,
+            lineEnd: 5,
+            playbackTime: 0,
+            isPlaying: false,
+            isActive: true,
+            distanceFromActive: 0,
+            progress: 0
+        )
+        let attributedText = WordVerticalTypesetter.attributedString(
+            for: line,
+            playbackTime: 0,
+            pendingColor: .gray,
+            playedColor: .white,
+            secondaryColor: .lightGray,
+            fontSize: 32
+        )
+        let verticalFormsKey = NSAttributedString.Key(
+            rawValue: kCTVerticalFormsAttributeName as String
+        )
+
+        XCTAssertEqual(verticalForm(in: attributedText, character: "中", key: verticalFormsKey), true)
+        XCTAssertEqual(verticalForm(in: attributedText, character: "，", key: verticalFormsKey), true)
+        XCTAssertEqual(verticalForm(in: attributedText, character: "（", key: verticalFormsKey), true)
+        XCTAssertEqual(verticalForm(in: attributedText, character: "《", key: verticalFormsKey), true)
+        XCTAssertEqual(verticalForm(in: attributedText, character: "…", key: verticalFormsKey), true)
+        XCTAssertEqual(verticalForm(in: attributedText, character: "W", key: verticalFormsKey), false)
+        XCTAssertEqual(verticalForm(in: attributedText, character: "2", key: verticalFormsKey), false)
+        XCTAssertEqual(verticalForm(in: attributedText, character: "’", key: verticalFormsKey), false)
+        let advance = WordVerticalTypesetter.advance(of: attributedText)
+        XCTAssertGreaterThan(advance, 1)
+
+        let framesetter = CTFramesetterCreateWithAttributedString(attributedText)
+        let frame = CTFramesetterCreateFrame(
+            framesetter,
+            CFRange(location: 0, length: 0),
+            CGPath(
+                rect: CGRect(x: 0, y: 0, width: 32 * 1.58, height: advance),
+                transform: nil
+            ),
+            [
+                kCTFrameProgressionAttributeName: NSNumber(value: CTFrameProgression.rightToLeft.rawValue),
+            ] as CFDictionary
+        )
+        XCTAssertEqual(CTFrameGetVisibleStringRange(frame).length, attributedText.length)
+
+        let units = WordVerticalTypesetter.layoutUnits(for: line, fontSize: 32)
+        XCTAssertFalse(units.isEmpty)
+        XCTAssertTrue(units.filter { !$0.isWhitespace }.allSatisfy { $0.timing != nil })
+        XCTAssertTrue(units.contains { $0.attributedText.string == "Word" })
+        XCTAssertFalse(units.contains { $0.attributedText.string == "2026" })
+        XCTAssertEqual(
+            units.map(\.attributedText.string).filter { "2026".contains($0) },
+            ["2", "0", "2", "6"]
+        )
+        for unit in units where !unit.isWhitespace {
+            let unitFrame = CTFramesetterCreateFrame(
+                CTFramesetterCreateWithAttributedString(unit.attributedText),
+                CFRange(location: 0, length: 0),
+                CGPath(
+                    rect: CGRect(x: 0, y: 0, width: 32 * 1.58, height: unit.advance),
+                    transform: nil
+                ),
+                [
+                    kCTFrameProgressionAttributeName: NSNumber(value: CTFrameProgression.rightToLeft.rawValue),
+                ] as CFDictionary
+            )
+            XCTAssertEqual(
+                CTFrameGetVisibleStringRange(unitFrame).length,
+                unit.attributedText.length
+            )
+        }
+
+        let start = WordVerticalTypesetter.karaokeTransform(progress: 0, fontSize: 32)
+        let peak = WordVerticalTypesetter.karaokeTransform(progress: 0.5, fontSize: 32)
+        let end = WordVerticalTypesetter.karaokeTransform(progress: 1, fontSize: 32)
+        XCTAssertEqual(start.scale, 1, accuracy: 0.0001)
+        XCTAssertEqual(start.lift, 0, accuracy: 0.0001)
+        XCTAssertEqual(peak.scale, 1.08, accuracy: 0.0001)
+        XCTAssertEqual(peak.lift, 32 * 0.065, accuracy: 0.0001)
+        XCTAssertEqual(end.scale, 1, accuracy: 0.0001)
+        XCTAssertEqual(end.lift, 0, accuracy: 0.0001)
+    }
+
     func testUpdateVersionComparisonAcceptsTagsAndUnevenComponents() {
         XCTAssertTrue(GitHubUpdateService.isVersion("v0.2.0", newerThan: "0.1.9"))
         XCTAssertTrue(GitHubUpdateService.isVersion("1.2.1", newerThan: "1.2"))
@@ -193,5 +290,15 @@ final class LyricsSafetyTests: XCTestCase {
         default:
             XCTFail("Unexpected save result", file: file, line: line)
         }
+    }
+
+    private func verticalForm(
+        in text: NSAttributedString,
+        character: String,
+        key: NSAttributedString.Key
+    ) -> Bool? {
+        let range = (text.string as NSString).range(of: character)
+        guard range.location != NSNotFound else { return nil }
+        return (text.attribute(key, at: range.location, effectiveRange: nil) as? NSNumber)?.boolValue
     }
 }
