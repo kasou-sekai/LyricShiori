@@ -32,6 +32,10 @@ final class LyricsKitLyricsService: LyricsSearchService {
             guard var document = Self.convert(lyrics, providerID: providerID) else {
                 continue
             }
+            document = LyricsTimingNormalizer.normalized(
+                document,
+                expectedDuration: request.duration
+            )
             if providerID == .qqMusic,
                needsTranslationRecovery(document),
                attemptedTranslationRecoveries < translationRecoveryCandidateLimit,

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SearchLyricsView: View {
     @Bindable var store: LyricShioriStore
+    var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var title = ""
     @State private var artist = ""
@@ -37,7 +38,11 @@ struct SearchLyricsView: View {
                 if let result = selectedResult {
                     LyricsSearchPreview(result: result) {
                         store.acceptLyrics(result.document, sourceName: result.provider.rawValue)
-                        dismiss()
+                        if let onDismiss {
+                            onDismiss()
+                        } else {
+                            dismiss()
+                        }
                     }
                 } else if store.isSearching {
                     ContentUnavailableView("Searching…", systemImage: "magnifyingglass")

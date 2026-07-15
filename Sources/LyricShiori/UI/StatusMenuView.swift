@@ -2,7 +2,6 @@ import SwiftUI
 
 struct StatusMenuView: View {
     @Bindable var store: LyricShioriStore
-    @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @Environment(\.dismiss) private var dismiss
 
@@ -19,8 +18,7 @@ struct StatusMenuView: View {
                 }
 
             Button("Search Lyrics") {
-                openWindow(id: "search-lyrics", value: "manual-search")
-                WindowActivator.bringToFront(titleContaining: "Search Lyrics")
+                store.showSearchLyricsWindow()
                 dismiss()
             }
 

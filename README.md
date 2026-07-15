@@ -18,6 +18,16 @@ Enable **Connect to Full-Screen Playing plugin** in **Settings → General** to 
 
 LyricShiori uses macOS Automation to communicate with Spotify. Start Spotify, then select **Authorize Spotify** in **Settings → General** and approve the system prompt. If permission was previously denied, allow LyricShiori in **System Settings → Privacy & Security → Automation**.
 
+## Updates and releases
+
+LyricShiori checks the latest public GitHub Release at launch by default. You can turn this off or use **Check for Updates** from **Settings → General** or the app menu. When an update is available, choose **Install**: the app downloads the matching `LyricShiori-<version>.zip`, quits, replaces `/Applications/LyricShiori.app`, and removes both the archive and its temporary extraction folder whether installation succeeds or fails.
+
+The development version is stored in `Sources/LyricShiori/Supporting/Info.plist`. To publish, push a numeric `v<version>` tag such as `v0.2.0`; the release workflow writes that tag into the app bundle before signing it, gives the build a monotonically increasing GitHub run number, and attaches the update archive automatically. For a local release archive, run:
+
+```sh
+Scripts/package-release.sh
+```
+
 ## Acknowledgements
 
 The interaction and lyrics presentation of this project were inspired by [ddddxxx/LyricsX](https://github.com/ddddxxx/LyricsX).

@@ -80,6 +80,7 @@ final class LyricShioriStore {
     var spotifyAccessPresentationState: SpotifyAccessPresentationState = .checking
     var isFullScreenPlayingPluginConnected = false
     var isDesktopLyricsDragging = false
+    let updateService: GitHubUpdateService
 
     @ObservationIgnored private let conversion: ChineseConversionService
     @ObservationIgnored private let sharedLyricsCache: SharedLyricsCache
@@ -93,6 +94,7 @@ final class LyricShioriStore {
     private var activeSearchID = UUID()
     private var spotifyPlaybackObserver: NSObjectProtocol?
     private var desktopLyricsWindowController: DesktopLyricsWindowController?
+    private var searchLyricsWindowController: SearchLyricsWindowController?
     @ObservationIgnored private var artworkPresetCache: [String: DesktopLyricsColorPreset] = [:]
     @ObservationIgnored private var artworkPresetTasks: [String: Task<Void, Never>] = [:]
 
@@ -102,6 +104,7 @@ final class LyricShioriStore {
     ) {
         let sharedLyricsCache = SharedLyricsCache()
         self.settings = settings
+        self.updateService = GitHubUpdateService()
         self.conversion = conversion
         self.sharedLyricsCache = sharedLyricsCache
         self.sharedLyricsCacheServer = SharedLyricsCacheServer(cache: sharedLyricsCache)
@@ -123,6 +126,14 @@ final class LyricShioriStore {
         refreshFullScreenPlayingPluginConnectionStatus()
         Task { await refreshSpotifyAuthorizationStatus() }
         syncDesktopLyricsWindow()
+        if settings.automaticallyCheckForUpdates {
+            Task { [weak self] in
+                // Avoid competing with launch-time Spotify and window setup.
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+                await self?.updateService.checkForUpdates()
+            }
+        }
         playerTask?.cancel()
         playerTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -134,7 +145,7 @@ final class LyricShioriStore {
         pluginConnectionTask = Task { [weak self] in
             while !Task.isCancelled {
                 self?.refreshFullScreenPlayingPluginConnectionStatus()
-                try? await Task.sleep(for: .milliseconds(500))
+                try? await Task.sleep(for: .seconds(2))
             }
         }
         lyricClockTask?.cancel()
@@ -160,6 +171,21 @@ final class LyricShioriStore {
             DistributedNotificationCenter.default().removeObserver(spotifyPlaybackObserver)
             self.spotifyPlaybackObserver = nil
         }
+    }
+
+    func checkForUpdates() async {
+        await updateService.checkForUpdates()
+    }
+
+    func installAvailableUpdate() async {
+        await updateService.downloadAndInstallAvailableUpdate()
+    }
+
+    func showSearchLyricsWindow() {
+        if searchLyricsWindowController == nil {
+            searchLyricsWindowController = SearchLyricsWindowController()
+        }
+        searchLyricsWindowController?.show(store: self)
     }
 
     private func installSpotifyPlaybackObserver() {

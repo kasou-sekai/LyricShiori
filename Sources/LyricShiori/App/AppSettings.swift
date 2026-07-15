@@ -47,6 +47,7 @@ final class AppSettings {
     var enabledProviders: Set<LyricsProviderID> = [.netease, .qqMusic] { didSet { save(enabledProviders.map(\.rawValue).sorted(), Keys.enabledProviders) } }
     var noSearchingTrackIDs: Set<String> = [] { didSet { save(Array(noSearchingTrackIDs).sorted(), Keys.noSearchingTrackIDs) } }
     var chineseConversionMode: ChineseConversionMode = .disabled { didSet { save(chineseConversionMode.rawValue, Keys.chineseConversionMode) } }
+    var automaticallyCheckForUpdates: Bool = true { didSet { save(automaticallyCheckForUpdates, Keys.automaticallyCheckForUpdates) } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -130,6 +131,7 @@ final class AppSettings {
         enabledProviders = Set(providerArray(Keys.enabledProviders, default: Array(enabledProviders)))
         noSearchingTrackIDs = Set(stringArray(Keys.noSearchingTrackIDs, default: Array(noSearchingTrackIDs)))
         chineseConversionMode = ChineseConversionMode(rawValue: string(Keys.chineseConversionMode, default: chineseConversionMode.rawValue)) ?? .disabled
+        automaticallyCheckForUpdates = bool(Keys.automaticallyCheckForUpdates, default: automaticallyCheckForUpdates)
     }
 
     private func save(_ value: Bool, _ key: String) {
@@ -386,4 +388,5 @@ private enum Keys {
     static let enabledProviders = "EnabledProviders"
     static let noSearchingTrackIDs = "NoSearchingTrackIds"
     static let chineseConversionMode = "ChineseConversionMode"
+    static let automaticallyCheckForUpdates = "AutomaticallyCheckForUpdates"
 }

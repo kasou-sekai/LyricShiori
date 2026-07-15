@@ -337,6 +337,7 @@ final class SharedLyricsCache: @unchecked Sendable {
             needsPersist: false,
             desktopLyricsColors: entry.desktopLyricsColors
         )
+        document = LyricsTimingNormalizer.normalized(document, expectedDuration: track.duration)
         document.selectionState = selectionState(from: entry)
         document.metadata.languageCode = LyricsLanguageRecognizer.recognize(in: lines.map(\.content).joined(separator: "\n"))
         return LyricsContentNormalizer.removingLeadingMetadata(from: document, track: track)
@@ -658,6 +659,11 @@ final class SharedLyricsCache: @unchecked Sendable {
 }
 
 final class SharedLyricsCacheServer: @unchecked Sendable {
+    private struct BridgePresence: Codable {
+        var client: String
+        var leaseMilliseconds: Int?
+    }
+
     private struct BridgeState: Codable {
         var trackUri: String
         var leaseMilliseconds: Int?
@@ -676,6 +682,7 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     private let sessionToken = UUID().uuidString
     private let stateLock = NSLock()
     private var activeLeases: [String: Int64] = [:]
+    private var activeClients: [String: Int64] = [:]
     private let maximumHeaderBytes = 32 * 1_024
     private let maximumBodyBytes = 1_024 * 1_024
     private let allowedOrigins: Set<String> = [
@@ -707,7 +714,10 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     func stop() {
         listener?.cancel()
         listener = nil
-        stateLock.withLock { activeLeases.removeAll() }
+        stateLock.withLock {
+            activeLeases.removeAll()
+            activeClients.removeAll()
+        }
     }
 
     func hasActiveLease(for trackURI: String) -> Bool {
@@ -724,7 +734,8 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         stateLock.withLock {
             let now = nowMilliseconds()
             activeLeases = activeLeases.filter { $0.value > now }
-            return !activeLeases.isEmpty
+            activeClients = activeClients.filter { $0.value > now }
+            return !activeClients.isEmpty || !activeLeases.isEmpty
         }
     }
 
@@ -844,6 +855,18 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
             return httpResponse(status: "413 Payload Too Large", origin: origin)
         }
         let body = Data(data[headerRange.upperBound..<(headerRange.upperBound + declaredLength)])
+
+        if method == "POST", components.path == "/bridge-presence" {
+            let presence = try JSONDecoder().decode(BridgePresence.self, from: body)
+            guard presence.client == "full-screen-playing" else {
+                return httpResponse(status: "400 Bad Request", origin: origin)
+            }
+            stateLock.withLock {
+                let lease = min(max(presence.leaseMilliseconds ?? 8_000, 1_000), 15_000)
+                activeClients[presence.client] = nowMilliseconds() + Int64(lease)
+            }
+            return httpResponse(status: "204 No Content", origin: origin)
+        }
 
         if method == "POST", components.path == "/bridge-state" {
             let state = try JSONDecoder().decode(BridgeState.self, from: body)

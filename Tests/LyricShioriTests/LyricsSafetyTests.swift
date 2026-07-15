@@ -3,6 +3,43 @@ import XCTest
 @testable import LyricShiori
 
 final class LyricsSafetyTests: XCTestCase {
+    func testUpdateVersionComparisonAcceptsTagsAndUnevenComponents() {
+        XCTAssertTrue(GitHubUpdateService.isVersion("v0.2.0", newerThan: "0.1.9"))
+        XCTAssertTrue(GitHubUpdateService.isVersion("1.2.1", newerThan: "1.2"))
+        XCTAssertFalse(GitHubUpdateService.isVersion("v1.2.0", newerThan: "1.2"))
+        XCTAssertFalse(GitHubUpdateService.isVersion("v1.2.0-beta.1", newerThan: "1.2.0"))
+    }
+
+    func testTimingNormalizerRepairsQQCentisecondsExposedAsSeconds() {
+        var document = makeDocument()
+        document.lines = [
+            LyricsLine(position: 381, content: "First", translations: [:], wordTimings: []),
+            LyricsLine(position: 12_404, content: "Last", translations: [:], wordTimings: [
+                WordTiming(start: 12_404, duration: 25, text: "Last"),
+            ]),
+        ]
+
+        let normalized = LyricsTimingNormalizer.normalized(document, expectedDuration: 128)
+
+        XCTAssertEqual(normalized.lines[0].position, 3.81, accuracy: 0.0001)
+        XCTAssertEqual(normalized.lines[1].position, 124.04, accuracy: 0.0001)
+        XCTAssertEqual(normalized.lines[1].wordTimings[0].start, 124.04, accuracy: 0.0001)
+        XCTAssertEqual(normalized.lines[1].wordTimings[0].duration, 0.25)
+    }
+
+    func testTimingNormalizerLeavesPlausibleTimelineUntouched() {
+        var document = makeDocument()
+        document.lines = [
+            LyricsLine(position: 3.81, content: "First", translations: [:], wordTimings: []),
+            LyricsLine(position: 124.04, content: "Last", translations: [:], wordTimings: []),
+        ]
+
+        XCTAssertEqual(
+            LyricsTimingNormalizer.normalized(document, expectedDuration: 128),
+            document
+        )
+    }
+
     func testLocalLyricsUseLRCSAndTrackIdentityInFilename() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

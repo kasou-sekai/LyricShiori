@@ -52,7 +52,6 @@ private enum SettingsTab: Hashable {
 /// Settings avoids a second, competing utility window for a menu-bar app.
 private struct CurrentLyricsSettingsView: View {
     @Bindable var store: LyricShioriStore
-    @Environment(\.openWindow) private var openWindow
     @State private var importing = false
     @State private var exporting = false
 
@@ -74,8 +73,7 @@ private struct CurrentLyricsSettingsView: View {
                 }
                 .disabled(store.currentLyrics == nil)
                 Button {
-                    openWindow(id: "search-lyrics", value: "manual-search")
-                    WindowActivator.bringToFront(titleContaining: "Search Lyrics")
+                    store.showSearchLyricsWindow()
                 } label: {
                     Label("Search", systemImage: "magnifyingglass")
                 }
@@ -104,6 +102,7 @@ private struct CurrentLyricsSettingsView: View {
 
 private struct GeneralSettingsView: View {
     @Bindable var store: LyricShioriStore
+    @State private var updateAlert: UpdateAlert?
 
     var body: some View {
         Form {
@@ -178,8 +177,28 @@ private struct GeneralSettingsView: View {
                     }
                 }
             }
+
+            Section("Updates") {
+                Toggle("Automatically check for updates", isOn: $store.settings.automaticallyCheckForUpdates)
+
+                LabeledContent("Current version") {
+                    Text(store.updateService.currentVersion)
+                        .textSelection(.enabled)
+                }
+
+                HStack {
+                    Button("Check for Updates…") {
+                        Task {
+                            await store.checkForUpdates()
+                            presentUpdateResult()
+                        }
+                    }
+                    .disabled(store.updateService.isBusy)
+                }
+            }
         }
         .formStyle(.grouped)
+        .alert(item: $updateAlert, content: updateAlertContent)
     }
 
     private func chooseLyricsFolder() {
@@ -218,6 +237,73 @@ private struct GeneralSettingsView: View {
     private var pluginConnectionStatusText: String {
         guard store.settings.connectFullScreenPlaying else { return "Disabled" }
         return store.isFullScreenPlayingPluginConnected ? "Plugin connected" : "Waiting for plugin"
+    }
+
+    private func presentUpdateResult() {
+        switch store.updateService.status {
+        case .failed:
+            updateAlert = .failure(store.updateService.status.message)
+        case .updateAvailable:
+            guard let update = store.updateService.availableUpdate else { return }
+            updateAlert = .available(update, releaseNotes: store.updateService.releaseNotes)
+        case .upToDate:
+            updateAlert = .upToDate
+        default:
+            break
+        }
+    }
+
+    private func presentInstallationFailureIfNeeded() {
+        if case .failed = store.updateService.status {
+            updateAlert = .failure(store.updateService.status.message)
+        }
+    }
+
+    private func updateAlertContent(_ alert: UpdateAlert) -> Alert {
+        switch alert {
+        case .upToDate:
+            return Alert(
+                title: Text("No Update Available"),
+                message: Text("You’re already running the latest version."),
+                dismissButton: .default(Text("OK"))
+            )
+        case .available(let update, let releaseNotes):
+            let notes = releaseNotes.map { "\n\n\($0)" } ?? ""
+            return Alert(
+                title: Text("Update Available"),
+                message: Text("LyricShiori \(update.version) is available. The app will quit while it installs.\(notes)"),
+                primaryButton: .default(Text("Download and Install")) {
+                    Task {
+                        await store.installAvailableUpdate()
+                        presentInstallationFailureIfNeeded()
+                    }
+                },
+                secondaryButton: .cancel()
+            )
+        case .failure(let message):
+            return Alert(
+                title: Text("Update Check Failed"),
+                message: Text(message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
+    }
+}
+
+private enum UpdateAlert: Identifiable {
+    case upToDate
+    case available(AvailableUpdate, releaseNotes: String?)
+    case failure(String)
+
+    var id: String {
+        switch self {
+        case .upToDate:
+            "up-to-date"
+        case .available(let update, _):
+            "available-\(update.version)"
+        case .failure(let message):
+            "failure-\(message)"
+        }
     }
 }
 

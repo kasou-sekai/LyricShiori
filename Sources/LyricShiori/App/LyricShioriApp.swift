@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct LyricShioriApp: App {
+    @NSApplicationDelegateAdaptor(LyricShioriAppDelegate.self) private var appDelegate
     @State private var store: LyricShioriStore
     @State private var menuBarController: MenuBarController
 
@@ -14,14 +15,6 @@ struct LyricShioriApp: App {
     }
 
     var body: some Scene {
-        // A value-based window group is created only through `openWindow`.
-        // This keeps the menu-bar app from opening the search window at launch.
-        WindowGroup("Search Lyrics", id: "search-lyrics", for: String.self) { _ in
-            SearchLyricsView(store: store)
-                .frame(minWidth: 640, minHeight: 440)
-        }
-        .defaultSize(width: 760, height: 520)
-
         Settings {
             SettingsView(store: store)
                 .frame(width: 860, height: 640)
@@ -33,15 +26,48 @@ struct LyricShioriApp: App {
 }
 
 @MainActor
+private final class LyricShioriAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // A SwiftUI app whose only scene is Settings opens that scene as its
+        // initial window, even though this app is an LSUIElement menu-bar app.
+        // Close only the windows created during the launch cycle; windows the
+        // user opens later from the status item are unaffected.
+        suppressInitialWindows()
+        DispatchQueue.main.async { [weak self] in
+            self?.suppressInitialWindows()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.suppressInitialWindows()
+        }
+    }
+
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationShouldRestoreApplicationState(_ app: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationShouldSaveApplicationState(_ app: NSApplication) -> Bool {
+        false
+    }
+
+    private func suppressInitialWindows() {
+        NSApplication.shared.windows
+            .filter { $0.isVisible && $0.level == .normal }
+            .forEach { $0.close() }
+    }
+}
+
+@MainActor
 private struct LyricShioriCommands: Commands {
     let store: LyricShioriStore
-    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
             Button("Search Lyrics") {
-                openWindow(id: "search-lyrics", value: "manual-search")
-                WindowActivator.bringToFront(titleContaining: "Search Lyrics")
+                store.showSearchLyricsWindow()
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
 
@@ -49,6 +75,7 @@ private struct LyricShioriCommands: Commands {
                 store.markWrongLyrics()
             }
             .keyboardShortcut("w", modifiers: [.command, .shift])
+
         }
         CommandMenu("Lyrics") {
             Button("Increase Offset") {
