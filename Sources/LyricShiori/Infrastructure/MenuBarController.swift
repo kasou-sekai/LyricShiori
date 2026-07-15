@@ -10,6 +10,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private var lyricsStatusItem: NSStatusItem?
     private var lyricsHostingView: StatusItemHostingView<MenuBarLyricsTicker>?
     private weak var popoverAnchor: NSStatusBarButton?
+    private var localMouseMonitor: Any?
+    private var globalMouseMonitor: Any?
 
     init(store: LyricShioriStore) {
         self.store = store
@@ -30,7 +32,62 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
+        stopOutsideClickMonitoring()
         popoverAnchor = nil
+    }
+
+    private func startOutsideClickMonitoring() {
+        guard localMouseMonitor == nil, globalMouseMonitor == nil else { return }
+        let mouseDownEvents: NSEvent.EventTypeMask = [
+            .leftMouseDown,
+            .rightMouseDown,
+            .otherMouseDown,
+        ]
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseDownEvents) { [weak self] event in
+            // Local monitors run on AppKit's main event loop. Keep the original
+            // event so the clicked control/window still receives it.
+            MainActor.assumeIsolated {
+                self?.closePopoverIfClickIsOutside(at: NSEvent.mouseLocation)
+            }
+            return event
+        }
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mouseDownEvents) { [weak self] _ in
+            let location = NSEvent.mouseLocation
+            Task { @MainActor [weak self] in
+                self?.closePopoverIfClickIsOutside(at: location)
+            }
+        }
+    }
+
+    private func stopOutsideClickMonitoring() {
+        if let localMouseMonitor {
+            NSEvent.removeMonitor(localMouseMonitor)
+            self.localMouseMonitor = nil
+        }
+        if let globalMouseMonitor {
+            NSEvent.removeMonitor(globalMouseMonitor)
+            self.globalMouseMonitor = nil
+        }
+    }
+
+    private func closePopoverIfClickIsOutside(at location: NSPoint) {
+        guard popover.isShown else {
+            stopOutsideClickMonitoring()
+            return
+        }
+        let popoverFrame = popover.contentViewController?.view.window?.frame
+        let anchorFrame = popoverAnchor.flatMap { button -> NSRect? in
+            guard let window = button.window else { return nil }
+            return window.convertToScreen(button.convert(button.bounds, to: nil))
+        }
+        guard MenuBarPopoverDismissalPolicy.shouldDismiss(
+            clickLocation: location,
+            popoverFrame: popoverFrame,
+            anchorFrame: anchorFrame
+        ) else {
+            return
+        }
+        popover.performClose(nil)
     }
 
     private func observeStore() {
@@ -199,6 +256,23 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
         popoverAnchor = button
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        startOutsideClickMonitoring()
+    }
+}
+
+enum MenuBarPopoverDismissalPolicy {
+    static func shouldDismiss(
+        clickLocation: NSPoint,
+        popoverFrame: NSRect?,
+        anchorFrame: NSRect?
+    ) -> Bool {
+        if popoverFrame?.contains(clickLocation) == true {
+            return false
+        }
+        if anchorFrame?.contains(clickLocation) == true {
+            return false
+        }
+        return true
     }
 }
 

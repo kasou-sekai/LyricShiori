@@ -5,6 +5,32 @@ import XCTest
 @testable import LyricShiori
 
 final class LyricsSafetyTests: XCTestCase {
+    func testMenuBarPopoverDismissesOnlyForOutsideClicks() {
+        let popoverFrame = NSRect(x: 100, y: 100, width: 240, height: 300)
+        let anchorFrame = NSRect(x: 260, y: 400, width: 30, height: 24)
+
+        XCTAssertFalse(MenuBarPopoverDismissalPolicy.shouldDismiss(
+            clickLocation: NSPoint(x: 150, y: 150),
+            popoverFrame: popoverFrame,
+            anchorFrame: anchorFrame
+        ))
+        XCTAssertFalse(MenuBarPopoverDismissalPolicy.shouldDismiss(
+            clickLocation: NSPoint(x: 275, y: 410),
+            popoverFrame: popoverFrame,
+            anchorFrame: anchorFrame
+        ))
+        XCTAssertTrue(MenuBarPopoverDismissalPolicy.shouldDismiss(
+            clickLocation: NSPoint(x: 20, y: 20),
+            popoverFrame: popoverFrame,
+            anchorFrame: anchorFrame
+        ))
+        XCTAssertTrue(MenuBarPopoverDismissalPolicy.shouldDismiss(
+            clickLocation: NSPoint(x: 20, y: 20),
+            popoverFrame: nil,
+            anchorFrame: nil
+        ))
+    }
+
     func testDesktopLyricsHideOnHoverAlsoEnablesClickThrough() {
         XCTAssertFalse(DesktopLyricsMousePolicy.ignoresMouseEvents(
             mousePassthrough: false,
