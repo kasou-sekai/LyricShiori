@@ -6,6 +6,7 @@ final class DesktopLyricsWindowController {
     private let store: LyricShioriStore
     private let panel: DesktopLyricsPanel
     private let hostingController: NSHostingController<DesktopLyricsView>
+    private var pointerTrackingTask: Task<Void, Never>?
 
     init(store: LyricShioriStore) {
         self.store = store
@@ -27,13 +28,18 @@ final class DesktopLyricsWindowController {
     }
 
     func show() {
-        guard !panel.isVisible else { return }
-        panel.orderFrontRegardless()
+        if !panel.isVisible {
+            panel.orderFrontRegardless()
+        }
+        updatePointerTracking()
     }
 
     func hide() {
-        guard panel.isVisible else { return }
-        panel.orderOut(nil)
+        stopPointerTracking()
+        setPointerOverLyrics(false)
+        if panel.isVisible {
+            panel.orderOut(nil)
+        }
     }
 
     func update() {
@@ -42,14 +48,57 @@ final class DesktopLyricsWindowController {
         let mousePassthrough = store.settings.desktopLyricsMousePassthrough
         panel.isDraggable = store.settings.desktopLyricsDraggable && !mousePassthrough
         panel.sharingType = store.settings.disableLyricsWhenScreenShot ? .none : .readOnly
-        panel.ignoresMouseEvents = mousePassthrough
-            || (!store.settings.desktopLyricsDraggable && !store.settings.hideLyricsWhenMousePassingBy)
         if !panel.isUserDragging {
             let targetFrame = frameForCurrentSettings()
             if panel.frame != targetFrame {
                 panel.setFrame(targetFrame, display: true)
             }
         }
+        updatePointerTracking()
+        applyMouseEventPolicy()
+    }
+
+    private func updatePointerTracking() {
+        guard panel.isVisible, store.settings.hideLyricsWhenMousePassingBy else {
+            stopPointerTracking()
+            setPointerOverLyrics(false)
+            return
+        }
+        refreshPointerState()
+        guard pointerTrackingTask == nil else { return }
+        pointerTrackingTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                self?.refreshPointerState()
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
+    }
+
+    private func stopPointerTracking() {
+        pointerTrackingTask?.cancel()
+        pointerTrackingTask = nil
+    }
+
+    private func refreshPointerState() {
+        let isInside = panel.isVisible
+            && store.settings.hideLyricsWhenMousePassingBy
+            && panel.frame.contains(NSEvent.mouseLocation)
+        setPointerOverLyrics(isInside)
+    }
+
+    private func setPointerOverLyrics(_ isInside: Bool) {
+        guard store.isPointerOverDesktopLyrics != isInside else { return }
+        store.isPointerOverDesktopLyrics = isInside
+        applyMouseEventPolicy()
+    }
+
+    private func applyMouseEventPolicy() {
+        panel.ignoresMouseEvents = DesktopLyricsMousePolicy.ignoresMouseEvents(
+            mousePassthrough: store.settings.desktopLyricsMousePassthrough,
+            draggable: store.settings.desktopLyricsDraggable,
+            hideWhenPointerPasses: store.settings.hideLyricsWhenMousePassingBy,
+            pointerIsInside: store.isPointerOverDesktopLyrics
+        )
     }
 
     private func frameForCurrentSettings() -> NSRect {
@@ -75,6 +124,19 @@ final class DesktopLyricsWindowController {
         let x = screenFrame.minX + screenFrame.width * store.settings.desktopLyricsXPositionFactor - width / 2
         let y = screenFrame.minY + screenFrame.height * (1 - store.settings.desktopLyricsYPositionFactor) - height / 2
         return NSRect(x: x, y: y, width: width, height: height)
+    }
+}
+
+enum DesktopLyricsMousePolicy {
+    static func ignoresMouseEvents(
+        mousePassthrough: Bool,
+        draggable: Bool,
+        hideWhenPointerPasses: Bool,
+        pointerIsInside: Bool
+    ) -> Bool {
+        mousePassthrough
+            || (hideWhenPointerPasses && pointerIsInside)
+            || (!draggable && !hideWhenPointerPasses)
     }
 }
 

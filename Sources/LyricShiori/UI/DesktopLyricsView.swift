@@ -4,7 +4,6 @@ import SwiftUI
 
 struct DesktopLyricsView: View {
     @Bindable var store: LyricShioriStore
-    @State private var mouseOverLyrics = false
 
     private let linePromotionAnimation = Animation.timingCurve(
         // Match Full Screen Playing's lyric track: it settles briskly without
@@ -37,10 +36,9 @@ struct DesktopLyricsView: View {
                 }
             }
         }
-        .opacity(store.settings.hideLyricsWhenMousePassingBy && mouseOverLyrics ? 0 : 1)
+        .opacity(store.settings.hideLyricsWhenMousePassingBy && store.isPointerOverDesktopLyrics ? 0 : 1)
         .animation(linePromotionAnimation, value: store.currentLineIndex)
-        .animation(.easeInOut(duration: 0.22), value: mouseOverLyrics)
-        .onHover { mouseOverLyrics = $0 }
+        .animation(.easeInOut(duration: 0.22), value: store.isPointerOverDesktopLyrics)
     }
 
     private var horizontalLyricsContent: some View {

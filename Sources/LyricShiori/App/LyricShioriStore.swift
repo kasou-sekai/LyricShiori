@@ -80,6 +80,7 @@ final class LyricShioriStore {
     var spotifyAccessPresentationState: SpotifyAccessPresentationState = .checking
     var isFullScreenPlayingPluginConnected = false
     var isDesktopLyricsDragging = false
+    var isPointerOverDesktopLyrics = false
     let updateService: GitHubUpdateService
 
     @ObservationIgnored private let conversion: ChineseConversionService

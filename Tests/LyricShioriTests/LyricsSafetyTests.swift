@@ -5,6 +5,39 @@ import XCTest
 @testable import LyricShiori
 
 final class LyricsSafetyTests: XCTestCase {
+    func testDesktopLyricsHideOnHoverAlsoEnablesClickThrough() {
+        XCTAssertFalse(DesktopLyricsMousePolicy.ignoresMouseEvents(
+            mousePassthrough: false,
+            draggable: false,
+            hideWhenPointerPasses: true,
+            pointerIsInside: false
+        ))
+        XCTAssertTrue(DesktopLyricsMousePolicy.ignoresMouseEvents(
+            mousePassthrough: false,
+            draggable: false,
+            hideWhenPointerPasses: true,
+            pointerIsInside: true
+        ))
+        XCTAssertTrue(DesktopLyricsMousePolicy.ignoresMouseEvents(
+            mousePassthrough: true,
+            draggable: false,
+            hideWhenPointerPasses: false,
+            pointerIsInside: false
+        ))
+        XCTAssertTrue(DesktopLyricsMousePolicy.ignoresMouseEvents(
+            mousePassthrough: false,
+            draggable: false,
+            hideWhenPointerPasses: false,
+            pointerIsInside: false
+        ))
+        XCTAssertFalse(DesktopLyricsMousePolicy.ignoresMouseEvents(
+            mousePassthrough: false,
+            draggable: true,
+            hideWhenPointerPasses: false,
+            pointerIsInside: true
+        ))
+    }
+
     func testChineseConversionAndCandidateMatchingAreSimplifiedTraditionalCompatible() {
         let conversion = FoundationChineseConversionService()
         XCTAssertEqual(
