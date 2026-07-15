@@ -20,7 +20,7 @@ LyricShiori uses macOS Automation to communicate with Spotify. Start Spotify, th
 
 ## Updates and releases
 
-LyricShiori checks the latest public GitHub Release at launch by default. You can turn this off or use **Check for Updates** from **Settings → General** or the app menu. When an update is available, choose **Install**: the app downloads the matching `LyricShiori-<version>.zip`, quits, replaces `/Applications/LyricShiori.app`, and removes both the archive and its temporary extraction folder whether installation succeeds or fails.
+LyricShiori checks the latest public GitHub Release at launch by default. You can turn this off or use **Check for Updates** from **Settings → General** or the app menu. When an update is available, choose **Install**: the app downloads the matching `LyricShiori-v<version>-macos-arm64.zip`, quits, replaces `/Applications/LyricShiori.app`, and removes both the archive and its temporary extraction folder whether installation succeeds or fails.
 
 The development version is stored in `Sources/LyricShiori/Supporting/Info.plist`. To publish, push a numeric `v<version>` tag such as `v0.2.0`; the release workflow writes that tag into the app bundle before signing it, gives the build a monotonically increasing GitHub run number, and attaches the update archive automatically. For a local release archive, run:
 
