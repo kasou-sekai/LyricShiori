@@ -24,6 +24,7 @@ final class AppSettings {
     var desktopLyricsShadowColor: Color = Color(red: 0.00, green: 1.00, blue: 0.83) { didSet { saveColor(desktopLyricsShadowColor, Keys.desktopLyricsShadowColor) } }
     var desktopLyricsDraggable: Bool = true { didSet { save(desktopLyricsDraggable, Keys.desktopLyricsDraggable) } }
     var desktopLyricsMousePassthrough: Bool = false { didSet { save(desktopLyricsMousePassthrough, Keys.desktopLyricsMousePassthrough) } }
+    var hideDesktopLyricsWhenSpotifyIsFrontmost: Bool = false { didSet { save(hideDesktopLyricsWhenSpotifyIsFrontmost, Keys.hideDesktopLyricsWhenSpotifyIsFrontmost) } }
 
     var menuBarLyricsEnabled: Bool = true { didSet { save(menuBarLyricsEnabled, Keys.menuBarLyricsEnabled) } }
     var menuBarDisplayMode: MenuBarDisplayMode = .combined { didSet { save(menuBarDisplayMode.rawValue, Keys.menuBarDisplayMode) } }
@@ -112,6 +113,10 @@ final class AppSettings {
         desktopLyricsShadowColor = color(Keys.desktopLyricsShadowColor, default: desktopLyricsShadowColor)
         desktopLyricsDraggable = bool(Keys.desktopLyricsDraggable, default: desktopLyricsDraggable)
         desktopLyricsMousePassthrough = bool(Keys.desktopLyricsMousePassthrough, default: desktopLyricsMousePassthrough)
+        hideDesktopLyricsWhenSpotifyIsFrontmost = bool(
+            Keys.hideDesktopLyricsWhenSpotifyIsFrontmost,
+            default: hideDesktopLyricsWhenSpotifyIsFrontmost
+        )
 
         menuBarLyricsEnabled = bool(Keys.menuBarLyricsEnabled, default: menuBarLyricsEnabled)
         menuBarDisplayMode = menuBarDisplayModeValue()
@@ -368,6 +373,7 @@ private enum Keys {
     static let desktopLyricsShadowColor = "DesktopLyricsShadowColor"
     static let desktopLyricsDraggable = "DesktopLyricsDraggable"
     static let desktopLyricsMousePassthrough = "DesktopLyricsMousePassthrough"
+    static let hideDesktopLyricsWhenSpotifyIsFrontmost = "HideDesktopLyricsWhenSpotifyIsFrontmost"
 
     static let menuBarLyricsEnabled = "MenuBarLyricsEnabled"
     static let menuBarLyricsCombined = "CombinedMenubarLyrics"

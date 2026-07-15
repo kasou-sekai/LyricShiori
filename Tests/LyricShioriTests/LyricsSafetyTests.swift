@@ -5,6 +5,58 @@ import XCTest
 @testable import LyricShiori
 
 final class LyricsSafetyTests: XCTestCase {
+    func testDesktopLyricsVisibilityFollowsSpotifyFrontmostPreference() {
+        XCTAssertTrue(DesktopLyricsVisibilityPolicy.isSpotifyFrontmost(
+            bundleIdentifier: "com.spotify.client"
+        ))
+        XCTAssertFalse(DesktopLyricsVisibilityPolicy.isSpotifyFrontmost(
+            bundleIdentifier: "com.apple.Safari"
+        ))
+
+        XCTAssertFalse(DesktopLyricsVisibilityPolicy.shouldShow(
+            desktopLyricsEnabled: true,
+            hasDisplayLines: true,
+            hideWhenSpotifyIsFrontmost: true,
+            isSpotifyFrontmost: true
+        ))
+        XCTAssertTrue(DesktopLyricsVisibilityPolicy.shouldShow(
+            desktopLyricsEnabled: true,
+            hasDisplayLines: true,
+            hideWhenSpotifyIsFrontmost: true,
+            isSpotifyFrontmost: false
+        ))
+        XCTAssertTrue(DesktopLyricsVisibilityPolicy.shouldShow(
+            desktopLyricsEnabled: true,
+            hasDisplayLines: true,
+            hideWhenSpotifyIsFrontmost: false,
+            isSpotifyFrontmost: true
+        ))
+        XCTAssertFalse(DesktopLyricsVisibilityPolicy.shouldShow(
+            desktopLyricsEnabled: false,
+            hasDisplayLines: true,
+            hideWhenSpotifyIsFrontmost: false,
+            isSpotifyFrontmost: false
+        ))
+        XCTAssertFalse(DesktopLyricsVisibilityPolicy.shouldShow(
+            desktopLyricsEnabled: true,
+            hasDisplayLines: false,
+            hideWhenSpotifyIsFrontmost: false,
+            isSpotifyFrontmost: false
+        ))
+    }
+
+    func testSpotifyFrontmostVisibilityPreferencePersists() {
+        let suiteName = "LyricShioriTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertFalse(settings.hideDesktopLyricsWhenSpotifyIsFrontmost)
+
+        settings.hideDesktopLyricsWhenSpotifyIsFrontmost = true
+        XCTAssertTrue(AppSettings(defaults: defaults).hideDesktopLyricsWhenSpotifyIsFrontmost)
+    }
+
     func testMenuBarPopoverDismissesOnlyForOutsideClicks() {
         let popoverFrame = NSRect(x: 100, y: 100, width: 240, height: 300)
         let anchorFrame = NSRect(x: 260, y: 400, width: 30, height: 24)

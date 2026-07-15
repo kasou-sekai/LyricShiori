@@ -337,6 +337,13 @@ private struct DisplaySettingsView: View {
                     }
                 Toggle("Hide lyrics while paused", isOn: $store.settings.disableLyricsWhenPaused)
                 Toggle("Hide from screenshots", isOn: $store.settings.disableLyricsWhenScreenShot)
+                Toggle(
+                    "Hide desktop lyrics when Spotify is in the foreground",
+                    isOn: $store.settings.hideDesktopLyricsWhenSpotifyIsFrontmost
+                )
+                .onChange(of: store.settings.hideDesktopLyricsWhenSpotifyIsFrontmost) { _, _ in
+                    store.syncDesktopLyricsWindow()
+                }
             }
 
             Section("Interaction") {

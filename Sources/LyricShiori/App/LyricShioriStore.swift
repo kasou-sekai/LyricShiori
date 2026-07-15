@@ -81,6 +81,7 @@ final class LyricShioriStore {
     var isFullScreenPlayingPluginConnected = false
     var isDesktopLyricsDragging = false
     var isPointerOverDesktopLyrics = false
+    private(set) var isSpotifyFrontmost = false
     let updateService: GitHubUpdateService
 
     @ObservationIgnored private let conversion: ChineseConversionService
@@ -94,6 +95,7 @@ final class LyricShioriStore {
     private var searchTask: Task<Void, Never>?
     private var activeSearchID = UUID()
     private var spotifyPlaybackObserver: NSObjectProtocol?
+    private var frontmostApplicationObserver: NSObjectProtocol?
     private var desktopLyricsWindowController: DesktopLyricsWindowController?
     private var searchLyricsWindowController: SearchLyricsWindowController?
     @ObservationIgnored private var artworkPresetCache: [String: DesktopLyricsColorPreset] = [:]
@@ -123,6 +125,7 @@ final class LyricShioriStore {
 
     func start() {
         installSpotifyPlaybackObserver()
+        installFrontmostApplicationObserver()
         syncFullScreenPlayingConnection()
         refreshFullScreenPlayingPluginConnectionStatus()
         Task { await refreshSpotifyAuthorizationStatus() }
@@ -172,6 +175,10 @@ final class LyricShioriStore {
             DistributedNotificationCenter.default().removeObserver(spotifyPlaybackObserver)
             self.spotifyPlaybackObserver = nil
         }
+        if let frontmostApplicationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(frontmostApplicationObserver)
+            self.frontmostApplicationObserver = nil
+        }
     }
 
     func checkForUpdates() async {
@@ -200,6 +207,30 @@ final class LyricShioriStore {
                 await self?.refreshPlayback()
             }
         }
+    }
+
+    private func installFrontmostApplicationObserver() {
+        guard frontmostApplicationObserver == nil else { return }
+        updateFrontmostApplication(NSWorkspace.shared.frontmostApplication)
+        frontmostApplicationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            Task { @MainActor [weak self] in
+                self?.updateFrontmostApplication(application)
+            }
+        }
+    }
+
+    private func updateFrontmostApplication(_ application: NSRunningApplication?) {
+        let isSpotify = DesktopLyricsVisibilityPolicy.isSpotifyFrontmost(
+            bundleIdentifier: application?.bundleIdentifier
+        )
+        guard isSpotifyFrontmost != isSpotify else { return }
+        isSpotifyFrontmost = isSpotify
+        syncDesktopLyricsWindow()
     }
 
     func refreshPlayback() async {
@@ -723,7 +754,13 @@ final class LyricShioriStore {
     }
 
     func syncDesktopLyricsWindow() {
-        guard settings.desktopLyricsEnabled else {
+        let hasDisplayLines = !desktopLyricsDisplayLines().isEmpty
+        guard DesktopLyricsVisibilityPolicy.shouldShow(
+            desktopLyricsEnabled: settings.desktopLyricsEnabled,
+            hasDisplayLines: hasDisplayLines,
+            hideWhenSpotifyIsFrontmost: settings.hideDesktopLyricsWhenSpotifyIsFrontmost,
+            isSpotifyFrontmost: isSpotifyFrontmost
+        ) else {
             desktopLyricsWindowController?.hide()
             return
         }
@@ -733,11 +770,7 @@ final class LyricShioriStore {
         }
 
         desktopLyricsWindowController?.update()
-        if desktopLyricsDisplayLines().isEmpty {
-            desktopLyricsWindowController?.hide()
-        } else {
-            desktopLyricsWindowController?.show()
-        }
+        desktopLyricsWindowController?.show()
     }
 
     func setDesktopLyricsCenter(screenFrame: NSRect, center: NSPoint) {
@@ -1005,6 +1038,25 @@ final class LyricShioriStore {
         return try? sharedLyricsCache.loadDocument(for: track, kind: .spotify)
     }
 
+}
+
+enum DesktopLyricsVisibilityPolicy {
+    private static let spotifyBundleIdentifier = "com.spotify.client"
+
+    static func isSpotifyFrontmost(bundleIdentifier: String?) -> Bool {
+        bundleIdentifier == spotifyBundleIdentifier
+    }
+
+    static func shouldShow(
+        desktopLyricsEnabled: Bool,
+        hasDisplayLines: Bool,
+        hideWhenSpotifyIsFrontmost: Bool,
+        isSpotifyFrontmost: Bool
+    ) -> Bool {
+        desktopLyricsEnabled
+            && hasDisplayLines
+            && !(hideWhenSpotifyIsFrontmost && isSpotifyFrontmost)
+    }
 }
 
 private extension Color {
