@@ -639,6 +639,40 @@ final class LyricShioriStore {
         syncDesktopLyricsWindow()
     }
 
+    var hasManualLyricsSelection: Bool {
+        currentLyrics?.selectionState.cacheSource == .manual
+    }
+
+    /// Removes the current track's persisted manual choice and resumes the
+    /// normal plugin/cache/provider selection flow.
+    func resetManualLyricsSelection() async {
+        guard let track = playback.track, hasManualLyricsSelection else { return }
+
+        searchTask?.cancel()
+        activeSearchID = UUID()
+        do {
+            try localLyricsStorage().removeLyrics(for: track)
+            try sharedLyricsCache.removeManualEntries(for: track)
+        } catch {
+            lastError = error.localizedDescription
+            return
+        }
+
+        settings.noSearchingTrackIDs.remove(track.id)
+        currentLyrics = nil
+        currentLineIndex = nil
+        searchResults = []
+        loadCachedLyricsForCurrentTrack(track)
+        syncDesktopLyricsWindow()
+
+        guard playback.track?.signature == track.signature,
+              !currentLyricsBlocksAutomaticSearch else {
+            return
+        }
+        let searchID = activeSearchID
+        await searchLyricsForCurrentTrack(searchID: searchID, trackSignature: track.signature)
+    }
+
     func converted(_ text: String) -> String {
         conversion.convert(text, mode: settings.chineseConversionMode)
     }

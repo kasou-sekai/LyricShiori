@@ -221,6 +221,24 @@ final class SharedLyricsCache: @unchecked Sendable {
         }
     }
 
+    /// Clears only entries that pin a manual choice. Plugin and automatic
+    /// entries for other cache kinds remain available as fallbacks.
+    func removeManualEntries(for track: TrackIdentity) throws {
+        guard isSpotifyTrack(track.id) else { return }
+        lock.lock()
+        defer { lock.unlock() }
+
+        var store = try loadStore()
+        removeExpiredEntries(from: &store)
+        for kind in Kind.allCases {
+            let key = cacheKey(trackUri: track.id, kind: kind)
+            if effectiveCacheSource(for: store.entries[key]) == .manual {
+                store.entries.removeValue(forKey: key)
+            }
+        }
+        try persist(store)
+    }
+
     @discardableResult
     func save(_ entry: Entry) throws -> SaveResult {
         guard isValid(entry) else { return .rejected }

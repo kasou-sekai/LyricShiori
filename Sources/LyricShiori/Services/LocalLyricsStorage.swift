@@ -184,6 +184,18 @@ struct LocalLyricsStorage: LyricsStorageService {
         return url
     }
 
+    /// Removes the persisted choice for a track so it can return to automatic
+    /// lyric discovery. Imported source files are left untouched; only the
+    /// LRCS copy managed by LyricShiori is removed.
+    func removeLyrics(for track: TrackIdentity) throws {
+        let accessed = beginSecurityScopeIfNeeded()
+        defer { endSecurityScopeIfNeeded(accessed) }
+
+        for url in candidateURLs(for: track) where FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+
     func importLyrics(from url: URL) throws -> LyricsDocument {
         let content = try String(contentsOf: url, encoding: .utf8)
         var document = try LyricsCacheFile.decode(content, sourceName: LyricsProviderID.local.rawValue, localURL: url, track: nil)

@@ -60,19 +60,46 @@ struct StatusMenuView: View {
                 Text("\(store.currentLyrics?.offsetMilliseconds ?? 0) ms")
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
-                Stepper("Timing Offset", value: offsetBinding, in: -10_000...10_000, step: 100)
-                    .labelsHidden()
             }
             .disabled(store.currentLyrics == nil)
 
             HStack(spacing: 10) {
                 Button {
-                    store.resetOffset()
+                    store.adjustOffset(by: -100)
                 } label: {
-                    Label("Reset Offset", systemImage: "arrow.counterclockwise")
+                    Label("Decrease Offset", systemImage: "minus")
+                        .labelStyle(.iconOnly)
                         .frame(maxWidth: .infinity)
                 }
-                .disabled(store.currentLyrics == nil)
+
+                Button {
+                    store.resetOffset()
+                } label: {
+                    Label("Reset", systemImage: "arrow.counterclockwise")
+                        .frame(maxWidth: .infinity)
+                }
+
+                Button {
+                    store.adjustOffset(by: 100)
+                } label: {
+                    Label("Increase Offset", systemImage: "plus")
+                        .labelStyle(.iconOnly)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .disabled(store.currentLyrics == nil)
+
+            HStack(spacing: 10) {
+                Button {
+                    Task { await store.resetManualLyricsSelection() }
+                } label: {
+                    Label("Use Automatic Lyrics", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity)
+                }
+                .disabled(!store.hasManualLyricsSelection)
+                .help("Forget the manually selected lyrics for this track and choose lyrics automatically")
 
                 Button {
                     store.markWrongLyrics()
@@ -109,12 +136,6 @@ struct StatusMenuView: View {
         .buttonStyle(.borderless)
     }
 
-    private var offsetBinding: Binding<Int> {
-        Binding(
-            get: { store.currentLyrics?.offsetMilliseconds ?? 0 },
-            set: { store.setOffset($0) }
-        )
-    }
 }
 
 private struct PopoverSectionTitle: View {
@@ -143,8 +164,13 @@ private struct CurrentTrackSummary: View {
             Text(store.playback.track?.artist ?? store.playback.status.rawValue.capitalized)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-            if let source = store.currentLyrics?.sourceName, !source.isEmpty {
-                Label("Lyrics: \(source)", systemImage: "shippingbox")
+            if let lyrics = store.currentLyrics,
+               let source = lyrics.sourceName,
+               !source.isEmpty {
+                Label(
+                    "Lyrics: \(source) · \(lyrics.selectionState.acquisitionLabel)",
+                    systemImage: "shippingbox"
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

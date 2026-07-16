@@ -78,6 +78,13 @@ private struct LyricShioriCommands: Commands {
 
         }
         CommandMenu("Lyrics") {
+            Button("Use Automatic Lyrics") {
+                Task { await store.resetManualLyricsSelection() }
+            }
+            .disabled(!store.hasManualLyricsSelection)
+
+            Divider()
+
             Button("Increase Offset") {
                 store.adjustOffset(by: 100)
             }

@@ -168,12 +168,31 @@ final class LyricsSafetyTests: XCTestCase {
         second.title = "Second song"
         second.artist = "Second artist"
         draft.prefill(from: second)
-        XCTAssertEqual(draft.title, "Manual title")
+        XCTAssertEqual(draft.title, second.title)
         XCTAssertEqual(draft.artist, second.artist)
 
         let reopenedDraft = SearchLyricsDraft(track: second)
         XCTAssertEqual(reopenedDraft.title, second.title)
         XCTAssertEqual(reopenedDraft.artist, second.artist)
+    }
+
+    func testLyricsDocumentReportsWordTimingAvailability() {
+        var regular = makeDocument()
+        XCTAssertFalse(regular.hasWordTimings)
+
+        regular.lines[0].wordTimings = [
+            WordTiming(start: 1, duration: 0.5, text: "A"),
+        ]
+        XCTAssertTrue(regular.hasWordTimings)
+    }
+
+    func testLyricsAcquisitionLabelsDistinguishPluginAppSearchAndManualSelection() {
+        XCTAssertEqual(LyricsSelectionState.plugin.acquisitionLabel, "Plugin")
+        XCTAssertEqual(
+            LyricsSelectionState.automaticSearch(cachedWithoutPlugin: true).acquisitionLabel,
+            "App Search"
+        )
+        XCTAssertEqual(LyricsSelectionState.manual().acquisitionLabel, "Manual")
     }
 
     func testWordVerticalTypesetterUsesEastAsianGlyphFormsAndSidewaysWesternRuns() {
@@ -322,6 +341,19 @@ final class LyricsSafetyTests: XCTestCase {
         XCTAssertNil(try storage.loadLyrics(for: makeTrack(id: "spotify:track:track-two")))
     }
 
+    func testRemovingLocalLyricsReturnsTrackToUnselectedState() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = LocalLyricsStorage(baseDirectory: directory)
+        let track = makeTrack(id: "spotify:track:track-one")
+
+        _ = try storage.save(makeDocument(), for: track)
+        try storage.removeLyrics(for: track)
+
+        XCTAssertNil(try storage.loadLyrics(for: track))
+    }
+
     func testManualSearchKeepsWeaklyRelatedProviderResult() {
         let request = ShioriLyricsSearchRequest(
             title: "Expected Song",
@@ -356,6 +388,26 @@ final class LyricsSafetyTests: XCTestCase {
         XCTAssertSaveResult(try cache.save(makeEntry(trackURI: trackURI, cachedAt: now + 1, source: .manual)), .saved)
         XCTAssertSaveResult(try cache.save(makeEntry(trackURI: trackURI, cachedAt: now + 2, source: .plugin)), .rejected)
         XCTAssertEqual(try cache.entry(trackUri: trackURI, kind: .enhanced)?.cacheSource, .manual)
+    }
+
+    func testRemovingManualCacheEntriesPreservesPluginFallback() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = SharedLyricsCache(url: directory.appendingPathComponent("cache.json"))
+        let track = makeTrack(id: "spotify:track:resettable")
+        let now = Int64((Date().timeIntervalSince1970 * 1_000).rounded())
+
+        var plugin = makeEntry(trackURI: track.id, cachedAt: now, source: .plugin)
+        plugin.kind = .spotify
+        XCTAssertSaveResult(try cache.save(plugin), .saved)
+        XCTAssertSaveResult(try cache.save(makeEntry(trackURI: track.id, cachedAt: now + 1, source: .manual)), .saved)
+
+        try cache.removeManualEntries(for: track)
+
+        XCTAssertNil(try cache.entry(trackUri: track.id, kind: .enhanced))
+        XCTAssertEqual(try cache.entry(trackUri: track.id, kind: .spotify)?.cacheSource, .plugin)
+        XCTAssertEqual(try cache.loadDocument(for: track)?.selectionState.cacheSource, .plugin)
     }
 
     func testCorruptSharedCacheIsQuarantinedAndRecovered() throws {

@@ -6,6 +6,7 @@ struct SearchLyricsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: SearchLyricsDraft
     @State private var selectedResultID: LyricsSearchResult.ID?
+    @State private var searchTask: Task<Void, Never>?
     @FocusState private var focusedField: Field?
 
     init(store: LyricShioriStore, onDismiss: (() -> Void)? = nil) {
@@ -61,8 +62,10 @@ struct SearchLyricsView: View {
             focusedField = draft.title.isEmpty ? .title : .artist
         }
         .onChange(of: store.playback.track?.signature) { _, _ in
-            // Playback may arrive just after the user opens the utility. Fill
-            // fields that are still empty/auto-filled without overwriting edits.
+            // A search belongs to the track it was started for. Switching
+            // tracks always replaces manual input with the new Spotify values.
+            searchTask?.cancel()
+            selectedResultID = nil
             draft.prefill(from: store.playback.track)
         }
         .onChange(of: store.searchResults) { _, results in
@@ -132,33 +135,30 @@ struct SearchLyricsView: View {
     private func beginSearch() {
         guard !isSearchEmpty, !store.isSearching else { return }
         selectedResultID = nil
-        Task { await store.searchLyrics(title: draft.title, artist: draft.artist) }
+        searchTask?.cancel()
+        let trackSignature = store.playback.track?.signature
+        searchTask = Task {
+            await store.searchLyrics(
+                title: draft.title,
+                artist: draft.artist,
+                requiredTrackSignature: trackSignature
+            )
+        }
     }
 }
 
 struct SearchLyricsDraft: Equatable {
     var title: String
     var artist: String
-    private var lastAutomaticTitle: String?
-    private var lastAutomaticArtist: String?
 
     init(track: TrackIdentity?) {
         title = track?.title ?? ""
         artist = track?.artist ?? ""
-        lastAutomaticTitle = track?.title
-        lastAutomaticArtist = track?.artist
     }
 
     mutating func prefill(from track: TrackIdentity?) {
-        guard let track else { return }
-        if title.isEmpty || title == lastAutomaticTitle {
-            title = track.title
-        }
-        if artist.isEmpty || artist == lastAutomaticArtist {
-            artist = track.artist
-        }
-        lastAutomaticTitle = track.title
-        lastAutomaticArtist = track.artist
+        title = track?.title ?? ""
+        artist = track?.artist ?? ""
     }
 }
 
@@ -183,6 +183,7 @@ private struct SearchResultRow: View {
                 .foregroundStyle(.secondary)
             HStack(spacing: 6) {
                 Text(result.provider.rawValue)
+                LyricsTimingBadge(hasWordTimings: result.document.hasWordTimings)
                 if let duration = result.duration, duration > 0 {
                     Text("• \(durationText(duration))")
                 }
@@ -211,6 +212,7 @@ private struct LyricsSearchPreview: View {
                         .foregroundStyle(.secondary)
                     HStack(spacing: 6) {
                         Text(result.provider.rawValue)
+                        LyricsTimingBadge(hasWordTimings: result.document.hasWordTimings)
                         if !result.isMatched {
                             Text("Possible match — check before using")
                         }
@@ -243,6 +245,18 @@ private struct LyricsSearchPreview: View {
                 .padding(20)
             }
         }
+    }
+}
+
+private struct LyricsTimingBadge: View {
+    let hasWordTimings: Bool
+
+    var body: some View {
+        Label(
+            hasWordTimings ? "Word-by-word" : "Regular",
+            systemImage: hasWordTimings ? "waveform" : "text.alignleft"
+        )
+        .foregroundStyle(hasWordTimings ? Color.accentColor : Color.secondary)
     }
 }
 

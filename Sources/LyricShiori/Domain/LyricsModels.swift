@@ -81,6 +81,10 @@ struct LyricsDocument: Identifiable, Equatable {
         LyricsCacheFile.encodedString(document: self, track: nil)
     }
 
+    var hasWordTimings: Bool {
+        lines.contains { !$0.wordTimings.isEmpty }
+    }
+
     func lineIndex(at playbackTime: TimeInterval) -> Int? {
         guard !lines.isEmpty else { return nil }
         let target = playbackTime + adjustedDelay
@@ -144,6 +148,20 @@ struct LyricsSelectionState: Equatable, Codable {
         origin: .plugin,
         cachedWithoutPlugin: false
     )
+
+    var acquisitionLabel: String {
+        if isManualSelection {
+            return "Manual"
+        }
+        switch origin {
+        case .plugin, .spotify:
+            return "Plugin"
+        case .automaticSearch:
+            return "App Search"
+        case .manualSelection, .local, .unknown:
+            return "Manual"
+        }
+    }
 
     var cacheSource: LyricsCacheSource {
         if isManualSelection {
