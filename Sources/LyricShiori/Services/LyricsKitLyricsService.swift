@@ -9,11 +9,15 @@ final class LyricsKitLyricsService: LyricsSearchService {
 
     init(providerID: LyricsProviderID) {
         self.providerID = providerID
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 10
+        configuration.timeoutIntervalForResource = 15
+        let httpClient = URLSessionHTTPClient(session: URLSession(configuration: configuration))
         switch providerID {
         case .netease:
-            self.provider = LyricsProviders.Service.netease.create()
+            self.provider = LyricsProviders.Service.netease.create(httpClient: httpClient)
         case .qqMusic:
-            self.provider = LyricsProviders.Service.qq.create()
+            self.provider = LyricsProviders.Service.qq.create(httpClient: httpClient)
         case .local:
             fatalError("Local lyrics are loaded through LocalLyricsStorage.")
         }
@@ -130,8 +134,48 @@ final class LyricsKitLyricsService: LyricsSearchService {
         guard let timeTag = line.attachments.timetag else {
             return []
         }
-        return timeTag.tags.map { tag in
-            WordTiming(start: line.position + tag.time, duration: nil, text: "")
+        return wordTimings(
+            content: line.content,
+            linePosition: line.position,
+            tags: timeTag.tags.map { ($0.index, $0.time) },
+            lineDuration: timeTag.duration
+        )
+    }
+
+    nonisolated static func wordTimings(
+        content: String,
+        linePosition: TimeInterval,
+        tags: [(index: Int, time: TimeInterval)],
+        lineDuration: TimeInterval?
+    ) -> [WordTiming] {
+        let characterCount = content.count
+        let boundaries = tags
+            .filter { (0...characterCount).contains($0.index) && $0.time >= 0 }
+            .sorted { lhs, rhs in
+                lhs.index == rhs.index ? lhs.time < rhs.time : lhs.index < rhs.index
+            }
+        guard !boundaries.isEmpty else { return [] }
+
+        return boundaries.indices.compactMap { index -> WordTiming? in
+            let boundary = boundaries[index]
+            let nextIndex = index + 1 < boundaries.count
+                ? boundaries[index + 1].index
+                : characterCount
+            guard nextIndex > boundary.index else { return nil }
+            let start = content.index(content.startIndex, offsetBy: boundary.index)
+            let end = content.index(content.startIndex, offsetBy: nextIndex)
+            let text = String(content[start..<end])
+            guard !text.isEmpty else { return nil }
+
+            let nextTime = index + 1 < boundaries.count
+                ? boundaries[index + 1].time
+                : lineDuration
+            let duration = nextTime.flatMap { $0 > boundary.time ? $0 - boundary.time : nil }
+            return WordTiming(
+                start: linePosition + boundary.time,
+                duration: duration,
+                text: text
+            )
         }
     }
 }

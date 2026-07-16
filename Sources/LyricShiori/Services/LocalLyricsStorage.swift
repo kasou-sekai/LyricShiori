@@ -143,7 +143,22 @@ struct LocalLyricsStorage: LyricsStorageService {
     }
 
     func candidateURLs(for track: TrackIdentity) -> [URL] {
-        [baseDirectory.appendingPathComponent(fileName(for: track)).appendingPathExtension("lrcs")]
+        let canonical = baseDirectory.appendingPathComponent(fileName(for: track)).appendingPathExtension("lrcs")
+        let identifier = track.id
+            .split(separator: ":")
+            .last
+            .map(String.init)
+            .map(sanitizeIdentifier) ?? "unknown"
+        let suffix = "[\(String(identifier.suffix(32)))].lrcs"
+        let existing = (try? FileManager.default.contentsOfDirectory(
+            at: baseDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ))?
+            .filter { $0.pathExtension == "lrcs" && $0.lastPathComponent.hasSuffix(suffix) }
+            .filter { $0 != canonical }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent } ?? []
+        return [canonical] + existing
     }
 
     func loadLyrics(for track: TrackIdentity) throws -> LyricsDocument? {
@@ -162,7 +177,6 @@ struct LocalLyricsStorage: LyricsStorageService {
         let content = try String(contentsOf: url, encoding: .utf8)
         if let decoded = try? LyricsCacheFile.decode(content, sourceName: LyricsProviderID.local.rawValue, localURL: url, track: track) {
             let document = LyricsContentNormalizer.removingLeadingMetadata(from: decoded, track: track)
-            guard isMetadataCompatible(document, with: track) else { return nil }
             LyricsBridgeTrace.record(event: "local.lrcs.loaded", document: document, track: track, detail: url.lastPathComponent)
             return document
         }
@@ -205,35 +219,6 @@ struct LocalLyricsStorage: LyricsStorageService {
 
     func export(_ document: LyricsDocument, to url: URL) throws {
         try LyricsCacheFile.encodedString(document: document, track: nil).write(to: url, atomically: true, encoding: .utf8)
-    }
-
-    private func isMetadataCompatible(_ document: LyricsDocument, with track: TrackIdentity) -> Bool {
-        if let title = document.metadata.title,
-           !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           !isLooseTextMatch(title, track.title) {
-            return false
-        }
-        if let artist = document.metadata.artist,
-           !artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           !isLooseTextMatch(artist, track.artist) {
-            return false
-        }
-        return true
-    }
-
-    private func isLooseTextMatch(_ lhs: String, _ rhs: String) -> Bool {
-        let first = normalizedText(lhs)
-        let second = normalizedText(rhs)
-        return !first.isEmpty && !second.isEmpty && (first == second || first.contains(second) || second.contains(first))
-    }
-
-    private func normalizedText(_ text: String) -> String {
-        text.precomposedStringWithCompatibilityMapping
-            .lowercased()
-            .replacingOccurrences(of: #"\[[^\]]+\]"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"\([^)]*\)"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"[\s　'’"“”.,!?，。！？、:：;；~～\-—_/\\]"#, with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func sanitize(_ value: String) -> String {

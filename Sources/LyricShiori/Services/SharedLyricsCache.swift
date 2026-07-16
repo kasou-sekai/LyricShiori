@@ -16,6 +16,7 @@ final class SharedLyricsCache: @unchecked Sendable {
     struct Store: Codable {
         var version: Int
         var entries: [String: Entry]
+        var manualResets: [String: Int64]? = nil
     }
 
     struct Entry: Codable {
@@ -35,6 +36,7 @@ final class SharedLyricsCache: @unchecked Sendable {
         var hidden: Bool?
         var desktopLyricsColors: DesktopLyricsColors? = nil
         var debug: AnyCodableValue?
+        var manualResetAt: Int64? = nil
     }
 
     struct Metadata: Codable {
@@ -144,7 +146,10 @@ final class SharedLyricsCache: @unchecked Sendable {
         let lines = lines(from: document)
         guard !lines.isEmpty else { return }
         let now = nowMilliseconds()
-        for kind in [Kind.enhanced, .enhancedRelaxed] {
+        let kinds: [Kind] = document.selectionState.cacheSource == .manual
+            ? Kind.allCases
+            : [.enhanced, .enhancedRelaxed]
+        for kind in kinds {
             try save(
                 Entry(
                     kind: kind,
@@ -236,6 +241,15 @@ final class SharedLyricsCache: @unchecked Sendable {
                 store.entries.removeValue(forKey: key)
             }
         }
+        let resetAt = nowMilliseconds()
+        var manualResets = store.manualResets ?? [:]
+        manualResets[track.id] = resetAt
+        store.manualResets = Dictionary(
+            uniqueKeysWithValues: manualResets
+                .sorted { $0.value > $1.value }
+                .prefix(200)
+                .map { ($0.key, $0.value) }
+        )
         try persist(store)
     }
 
@@ -248,6 +262,10 @@ final class SharedLyricsCache: @unchecked Sendable {
         var store = try loadStore()
         removeExpiredEntries(from: &store)
         let key = cacheKey(trackUri: entry.trackUri, kind: entry.kind)
+        var clearedManualReset = false
+        if effectiveCacheSource(for: entry) == .manual {
+            clearedManualReset = store.manualResets?.removeValue(forKey: entry.trackUri) != nil
+        }
         if effectiveCacheSource(for: store.entries[key]) == .manual,
            effectiveCacheSource(for: entry) != .manual {
             try persist(store)
@@ -255,6 +273,14 @@ final class SharedLyricsCache: @unchecked Sendable {
             return .rejected
         }
         if let existing = store.entries[key],
+           effectiveCacheSource(for: entry) != .manual,
+           localPersistenceSourceScore(existing) > localPersistenceSourceScore(entry) {
+            try persist(store)
+            LyricsBridgeTrace.record(event: "cache.rejected.source-preserved", entry: entry)
+            return .rejected
+        }
+        if let existing = store.entries[key],
+           effectiveCacheSource(for: existing) == effectiveCacheSource(for: entry),
            effectiveCacheSource(for: entry) != .manual,
            compareLyricsQuality(existing.lines, entry.lines) > 0 {
             // The plugin can publish an enhanced result first and then later
@@ -269,6 +295,9 @@ final class SharedLyricsCache: @unchecked Sendable {
         // new lyric selection, so avoid re-persisting the cache and notifying
         // the UI to reload the current lyric file.
         if store.entries[key]?.cachedAt == entry.cachedAt {
+            if clearedManualReset {
+                try persist(store)
+            }
             return .unchanged
         }
         store.entries[key] = entry
@@ -284,11 +313,14 @@ final class SharedLyricsCache: @unchecked Sendable {
     }
 
     func encodedPreferredEntry(trackUri: String, kind: Kind) throws -> Data? {
-        guard let entry = try entry(trackUri: trackUri, kind: kind),
-              isSharedBridgePreferred(entry) else {
-            return nil
+        let resetAt = try manualResetAt(for: trackUri)
+        if var entry = try entry(trackUri: trackUri, kind: kind),
+           isSharedBridgePreferred(entry) {
+            entry.manualResetAt = resetAt
+            return try encoder.encode(entry)
         }
-        return try encoder.encode(entry)
+        guard let resetAt else { return nil }
+        return try encoder.encode(manualResetEntry(trackUri: trackUri, kind: kind, resetAt: resetAt))
     }
 
     func encodedBestPreferredEntry(_ document: LyricsDocument, for track: TrackIdentity, kind: Kind) throws -> Data? {
@@ -300,7 +332,8 @@ final class SharedLyricsCache: @unchecked Sendable {
         if let hidden = candidates.first(where: { $0.hidden == true }) {
             return try encoder.encode(hidden)
         }
-        guard let best = bestLocalPersistenceEntry(from: candidates) else { return nil }
+        guard var best = bestLocalPersistenceEntry(from: candidates) else { return nil }
+        best.manualResetAt = try manualResetAt(for: track.id)
         return try encoder.encode(best)
     }
 
@@ -553,35 +586,38 @@ final class SharedLyricsCache: @unchecked Sendable {
     }
 
     private func isEntryCompatible(_ entry: Entry, with track: TrackIdentity) -> Bool {
-        if effectiveCacheSource(for: entry) == .manual {
-            return true
-        }
-        if let title = entry.metadata?.title,
-           !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           !isLooseTextMatch(title, track.title) {
-            return false
-        }
-        if let artist = entry.metadata?.artist,
-           !artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           !isLooseTextMatch(artist, track.artist) {
-            return false
-        }
-        return true
+        // The cache key already contains the immutable Spotify track URI. Text
+        // metadata can legitimately change because of localization, updated
+        // credits, or simplified/traditional Chinese conversion.
+        entry.trackUri == track.id
     }
 
-    private func isLooseTextMatch(_ lhs: String, _ rhs: String) -> Bool {
-        let first = normalizedText(lhs)
-        let second = normalizedText(rhs)
-        return !first.isEmpty && !second.isEmpty && (first == second || first.contains(second) || second.contains(first))
+    private func manualResetAt(for trackURI: String) throws -> Int64? {
+        lock.lock()
+        defer { lock.unlock() }
+        return try loadStore().manualResets?[trackURI]
     }
 
-    private func normalizedText(_ text: String) -> String {
-        text.precomposedStringWithCompatibilityMapping
-            .lowercased()
-            .replacingOccurrences(of: #"\[[^\]]+\]"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"\([^)]*\)"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"[\s　'’"“”.,!?，。！？、:：;；~～\-—_/\\]"#, with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    private func manualResetEntry(trackUri: String, kind: Kind, resetAt: Int64) -> Entry {
+        Entry(
+            kind: kind,
+            trackUri: trackUri,
+            cachedAt: resetAt,
+            expiresAt: nowMilliseconds() + readyTTL,
+            lines: [],
+            metadata: nil,
+            cacheSource: .withoutPlugin,
+            source: .lyricShiori,
+            sourceName: "LyricShiori Manual Reset",
+            isManualSelection: false,
+            cachedWithoutPlugin: true,
+            offsetMilliseconds: 0,
+            timingOffsetApplied: false,
+            hidden: false,
+            desktopLyricsColors: nil,
+            debug: nil,
+            manualResetAt: resetAt
+        )
     }
 
     private func source(for document: LyricsDocument) -> Source {
@@ -596,7 +632,7 @@ final class SharedLyricsCache: @unchecked Sendable {
     private func loadStore() throws -> Store {
         if let memoryStore { return memoryStore }
         guard FileManager.default.fileExists(atPath: url.path) else {
-            let store = Store(version: cacheVersion, entries: [:])
+            let store = Store(version: cacheVersion, entries: [:], manualResets: nil)
             memoryStore = store
             return store
         }
@@ -614,7 +650,7 @@ final class SharedLyricsCache: @unchecked Sendable {
             return store
         }
         guard store.version == cacheVersion else {
-            let empty = Store(version: cacheVersion, entries: [:])
+            let empty = Store(version: cacheVersion, entries: [:], manualResets: nil)
             memoryStore = empty
             return empty
         }
@@ -699,6 +735,7 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     private let port: NWEndpoint.Port = 24887
     private let sessionToken = UUID().uuidString
     private let stateLock = NSLock()
+    private var shouldRun = false
     private var activeLeases: [String: Int64] = [:]
     private var activeClients: [String: Int64] = [:]
     private let maximumHeaderBytes = 32 * 1_024
@@ -714,7 +751,15 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     }
 
     func start() {
-        guard listener == nil else { return }
+        stateLock.withLock {
+            shouldRun = true
+        }
+        attemptStart()
+    }
+
+    private func attemptStart() {
+        let shouldAttempt = stateLock.withLock { shouldRun && listener == nil }
+        guard shouldAttempt else { return }
         do {
             let parameters = NWParameters.tcp
             parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: port)
@@ -722,19 +767,52 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
             listener.newConnectionHandler = { [weak self] connection in
                 self?.handle(connection)
             }
+            listener.stateUpdateHandler = { [weak self, weak listener] state in
+                guard case .failed = state, let listener else { return }
+                self?.listenerFailed(listener)
+            }
+            let installed = stateLock.withLock { () -> Bool in
+                guard shouldRun, self.listener == nil else { return false }
+                self.listener = listener
+                return true
+            }
+            guard installed else {
+                listener.cancel()
+                return
+            }
             listener.start(queue: .global(qos: .utility))
-            self.listener = listener
         } catch {
-            // The cache still works through the shared file when the bridge port is unavailable.
+            scheduleRetry()
         }
     }
 
     func stop() {
-        listener?.cancel()
-        listener = nil
-        stateLock.withLock {
+        let listener = stateLock.withLock { () -> NWListener? in
+            shouldRun = false
+            let current = self.listener
+            self.listener = nil
             activeLeases.removeAll()
             activeClients.removeAll()
+            return current
+        }
+        listener?.cancel()
+    }
+
+    private func listenerFailed(_ failedListener: NWListener) {
+        let shouldRetry = stateLock.withLock { () -> Bool in
+            guard listener === failedListener else { return false }
+            listener = nil
+            return shouldRun
+        }
+        failedListener.cancel()
+        if shouldRetry {
+            scheduleRetry()
+        }
+    }
+
+    private func scheduleRetry() {
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) { [weak self] in
+            self?.attemptStart()
         }
     }
 

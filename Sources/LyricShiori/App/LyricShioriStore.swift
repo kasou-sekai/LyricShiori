@@ -94,6 +94,8 @@ final class LyricShioriStore {
     private var lyricClockTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var activeSearchID = UUID()
+    private var automaticSearchID: UUID?
+    private var playbackRefreshRevision = 0
     private var spotifyPlaybackObserver: NSObjectProtocol?
     private var frontmostApplicationObserver: NSObjectProtocol?
     private var desktopLyricsWindowController: DesktopLyricsWindowController?
@@ -236,7 +238,10 @@ final class LyricShioriStore {
     func refreshPlayback() async {
         let service = playerServices[.spotify]
         guard let service else { return }
+        playbackRefreshRevision += 1
+        let revision = playbackRefreshRevision
         let next = await service.snapshot
+        guard revision == playbackRefreshRevision else { return }
         let previousTrackSignature = playback.track?.signature
         playback = next
         updateCurrentLine()
@@ -254,39 +259,57 @@ final class LyricShioriStore {
         currentLyrics = nil
         currentLineIndex = nil
         searchResults = []
+        isSearching = false
         searchTask?.cancel()
         activeSearchID = UUID()
+        automaticSearchID = nil
 
         guard let track = playback.track else { return }
         guard !settings.noSearchingTrackIDs.contains(track.id) else { return }
-        loadCachedLyricsForCurrentTrack(track)
+        let pluginConnected = settings.connectFullscape
+            && sharedLyricsCacheServer.hasActiveConnection()
+        isFullscapePluginConnected = pluginConnected
+        loadCachedLyricsForCurrentTrack(track, allowAutomatic: !pluginConnected)
         // The playback refresh hides the window before loading the new track's cache.
         // Re-sync here so a successfully loaded cache can show the window again.
         syncDesktopLyricsWindow()
         guard !currentLyricsBlocksAutomaticSearch else { return }
+        guard !pluginConnected else { return }
         let searchID = activeSearchID
+        automaticSearchID = searchID
         let trackSignature = track.signature
         searchTask = Task { [weak self] in
-            // Give the extension a short discovery window. This is bounded: a
-            // missing or unresponsive extension must never suppress Shiori's
-            // own providers indefinitely.
             if self?.settings.connectFullscape == true {
-                try? await Task.sleep(for: .seconds(1))
-                let deadline = ContinuousClock.now + .seconds(9)
-                while !Task.isCancelled,
-                      ContinuousClock.now < deadline,
-                      self?.sharedLyricsCacheServer.hasActiveLease(for: track.id) == true {
-                    try? await Task.sleep(for: .milliseconds(400))
+                // Cover the bridge session handshake as well as the first
+                // presence/lease update before deciding the plugin is absent.
+                try? await Task.sleep(for: .milliseconds(2_500))
+                guard !Task.isCancelled else { return }
+                if self?.sharedLyricsCacheServer.hasActiveConnection() == true {
+                    self?.isFullscapePluginConnected = true
+                    if self?.currentLyrics?.selectionState.cacheSource == .withoutPlugin {
+                        self?.currentLyrics = nil
+                        self?.currentLineIndex = nil
+                        self?.syncDesktopLyricsWindow()
+                    }
+                    if self?.automaticSearchID == searchID {
+                        self?.automaticSearchID = nil
+                    }
+                    return
                 }
             }
             guard !Task.isCancelled else { return }
             await self?.searchLyricsForCurrentTrack(searchID: searchID, trackSignature: trackSignature)
+            if self?.automaticSearchID == searchID {
+                self?.automaticSearchID = nil
+            }
         }
     }
 
     func searchLyricsForCurrentTrack() async {
         guard let track = playback.track else { return }
+        searchTask?.cancel()
         activeSearchID = UUID()
+        automaticSearchID = nil
         let searchID = activeSearchID
         await searchLyricsForCurrentTrack(searchID: searchID, trackSignature: track.signature)
     }
@@ -317,6 +340,20 @@ final class LyricShioriStore {
         let cleanArtist = artist.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty || !cleanArtist.isEmpty else { return }
 
+        let effectiveSearchID: UUID
+        if let searchID {
+            effectiveSearchID = searchID
+        } else {
+            // A chooser search is authoritative over an in-flight background
+            // search. Invalidating the ID prevents a cancelled provider from
+            // publishing late results into the manual chooser.
+            searchTask?.cancel()
+            activeSearchID = UUID()
+            automaticSearchID = nil
+            effectiveSearchID = activeSearchID
+        }
+        guard isCurrentSearch(effectiveSearchID, requiredTrackSignature: requiredTrackSignature) else { return }
+
         // Both remote providers rank Simplified Chinese queries more reliably.
         // Keep the form fields untouched, but normalize every submitted field
         // at this single boundary so automatic and manual searches agree.
@@ -330,7 +367,11 @@ final class LyricShioriStore {
         }
 
         isSearching = true
-        defer { isSearching = false }
+        defer {
+            if activeSearchID == effectiveSearchID {
+                isSearching = false
+            }
+        }
         // Search failures from public lyric providers are common and transient.
         // They should not interrupt a manual search with an alert.
         lastError = nil
@@ -355,7 +396,7 @@ final class LyricShioriStore {
         var collected = await searchProviders(
             request: request,
             matcher: preciseMatcher,
-            searchID: searchID,
+            searchID: effectiveSearchID,
             requiredTrackSignature: requiredTrackSignature
         )
 
@@ -364,7 +405,7 @@ final class LyricShioriStore {
         // visible so the user can choose alternate/live/aliased versions.
         if (!acceptFirstResult || collected.isEmpty), !submittedTitle.isEmpty,
            !Task.isCancelled,
-           isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) {
+           isCurrentSearch(effectiveSearchID, requiredTrackSignature: requiredTrackSignature) {
             let broadRequest = ShioriLyricsSearchRequest(
                 title: submittedTitle,
                 artist: "",
@@ -375,13 +416,13 @@ final class LyricShioriStore {
             let broadResults = await searchProviders(
                 request: broadRequest,
                 matcher: LyricsCandidateMatcher(request: broadRequest, referenceDocument: referenceDocument, mode: mode),
-                searchID: searchID,
+                searchID: effectiveSearchID,
                 requiredTrackSignature: requiredTrackSignature
             )
             collected = mergedSearchResults(collected + broadResults).sorted(by: preciseMatcher.sort)
         }
 
-        guard !Task.isCancelled, isCurrentSearch(searchID, requiredTrackSignature: requiredTrackSignature) else { return }
+        guard !Task.isCancelled, isCurrentSearch(effectiveSearchID, requiredTrackSignature: requiredTrackSignature) else { return }
         searchResults = collected
         if acceptFirstResult, shouldAcceptAutomaticSearchResult, let first = collected.first {
             acceptLyrics(first.document, sourceName: first.provider.rawValue, isManualSelection: false)
@@ -659,18 +700,8 @@ final class LyricShioriStore {
         }
 
         settings.noSearchingTrackIDs.remove(track.id)
-        currentLyrics = nil
-        currentLineIndex = nil
-        searchResults = []
-        loadCachedLyricsForCurrentTrack(track)
-        syncDesktopLyricsWindow()
-
-        guard playback.track?.signature == track.signature,
-              !currentLyricsBlocksAutomaticSearch else {
-            return
-        }
-        let searchID = activeSearchID
-        await searchLyricsForCurrentTrack(searchID: searchID, trackSignature: track.signature)
+        guard playback.track?.signature == track.signature else { return }
+        await currentTrackChanged()
     }
 
     func converted(_ text: String) -> String {
@@ -938,7 +969,7 @@ final class LyricShioriStore {
         return LocalLyricsStorage(baseDirectory: path.url, isSecurityScoped: path.securityScoped)
     }
 
-    private func loadCachedLyricsForCurrentTrack(_ track: TrackIdentity) {
+    private func loadCachedLyricsForCurrentTrack(_ track: TrackIdentity, allowAutomatic: Bool? = nil) {
         do {
             if let local = try localLyricsStorage().loadLyrics(for: track) {
                 useCachedLyrics(
@@ -953,7 +984,14 @@ final class LyricShioriStore {
             // The bridge is an additional producer, not the only reader. A
             // restarted desktop app must immediately reuse lyrics that the
             // extension has already cached instead of waiting for another POST.
-            if let shared = try sharedLyricsCache.loadDocument(for: track) {
+            let shared: LyricsDocument?
+            if allowAutomatic ?? !isFullscapePluginConnected {
+                shared = try sharedLyricsCache.loadDocument(for: track)
+            } else {
+                shared = try sharedLyricsCache.loadManualDocument(for: track)
+                    ?? sharedLyricsCache.loadPluginDocument(for: track)
+            }
+            if let shared {
                 useCachedLyrics(shared, for: track, persistLocal: false, syncShared: false)
                 return
             }
@@ -1015,8 +1053,28 @@ final class LyricShioriStore {
     }
 
     private func refreshFullscapePluginConnectionStatus() {
-        isFullscapePluginConnected = settings.connectFullscape
+        let connected = settings.connectFullscape
             && sharedLyricsCacheServer.hasActiveConnection()
+        guard connected != isFullscapePluginConnected else { return }
+        isFullscapePluginConnected = connected
+
+        guard let track = playback.track else { return }
+        if connected {
+            if automaticSearchID == activeSearchID {
+                searchTask?.cancel()
+                activeSearchID = UUID()
+                automaticSearchID = nil
+                isSearching = false
+            }
+            if currentLyrics?.selectionState.cacheSource == .withoutPlugin {
+                currentLyrics = nil
+                currentLineIndex = nil
+            }
+            loadCachedLyricsForCurrentTrack(track, allowAutomatic: false)
+            syncDesktopLyricsWindow()
+        } else {
+            Task { await currentTrackChanged() }
+        }
     }
 
     private func persistLocalLyrics(_ document: LyricsDocument, for track: TrackIdentity) {

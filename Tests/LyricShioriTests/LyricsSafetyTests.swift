@@ -186,6 +186,21 @@ final class LyricsSafetyTests: XCTestCase {
         XCTAssertTrue(regular.hasWordTimings)
     }
 
+    func testLyricsKitInlineTagsProduceTextAndDurations() throws {
+        let timings = LyricsKitLyricsService.wordTimings(
+            content: "Hello世界",
+            linePosition: 12,
+            tags: [(0, 0), (5, 0.8), (6, 1.2), (7, 1.6)],
+            lineDuration: 1.6
+        )
+
+        XCTAssertEqual(timings.map(\.text), ["Hello", "世", "界"])
+        XCTAssertEqual(timings.map(\.start), [12, 12.8, 13.2])
+        XCTAssertEqual(timings[0].duration, 0.8)
+        XCTAssertEqual(try XCTUnwrap(timings[1].duration), 0.4, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(timings[2].duration), 0.4, accuracy: 0.0001)
+    }
+
     func testLyricsAcquisitionLabelsDistinguishPluginAppSearchAndManualSelection() {
         XCTAssertEqual(LyricsSelectionState.plugin.acquisitionLabel, "Plugin")
         XCTAssertEqual(
@@ -341,6 +356,20 @@ final class LyricsSafetyTests: XCTestCase {
         XCTAssertNil(try storage.loadLyrics(for: makeTrack(id: "spotify:track:track-two")))
     }
 
+    func testLocalLyricsTrustTrackIdentityAfterMetadataChanges() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = LocalLyricsStorage(baseDirectory: directory)
+        let original = makeTrack(id: "spotify:track:localized")
+        _ = try storage.save(makeDocument(), for: original)
+
+        var localized = original
+        localized.title = "本地化歌曲名"
+        localized.artist = "更新后的艺人名"
+        XCTAssertNotNil(try storage.loadLyrics(for: localized))
+    }
+
     func testRemovingLocalLyricsReturnsTrackToUnselectedState() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -408,6 +437,36 @@ final class LyricsSafetyTests: XCTestCase {
         XCTAssertNil(try cache.entry(trackUri: track.id, kind: .enhanced))
         XCTAssertEqual(try cache.entry(trackUri: track.id, kind: .spotify)?.cacheSource, .plugin)
         XCTAssertEqual(try cache.loadDocument(for: track)?.selectionState.cacheSource, .plugin)
+    }
+
+    func testManualResetIsExposedToPluginAsTombstone() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = SharedLyricsCache(url: directory.appendingPathComponent("cache.json"))
+        let track = makeTrack(id: "spotify:track:manual-reset")
+        let now = Int64((Date().timeIntervalSince1970 * 1_000).rounded())
+        XCTAssertSaveResult(try cache.save(makeEntry(trackURI: track.id, cachedAt: now, source: .manual)), .saved)
+
+        try cache.removeManualEntries(for: track)
+
+        let data = try XCTUnwrap(cache.encodedPreferredEntry(trackUri: track.id, kind: .enhanced))
+        let tombstone = try JSONDecoder().decode(SharedLyricsCache.Entry.self, from: data)
+        XCTAssertNotNil(tombstone.manualResetAt)
+        XCTAssertTrue(tombstone.lines.isEmpty)
+    }
+
+    func testPluginResultReplacesLowerPriorityAppSearchCache() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = SharedLyricsCache(url: directory.appendingPathComponent("cache.json"))
+        let trackURI = "spotify:track:source-priority"
+        let now = Int64((Date().timeIntervalSince1970 * 1_000).rounded())
+
+        XCTAssertSaveResult(try cache.save(makeEntry(trackURI: trackURI, cachedAt: now, source: .withoutPlugin)), .saved)
+        XCTAssertSaveResult(try cache.save(makeEntry(trackURI: trackURI, cachedAt: now + 1, source: .plugin)), .saved)
+        XCTAssertEqual(try cache.entry(trackUri: trackURI, kind: .enhanced)?.cacheSource, .plugin)
     }
 
     func testCorruptSharedCacheIsQuarantinedAndRecovered() throws {
