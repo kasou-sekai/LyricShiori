@@ -10,9 +10,9 @@ LyricShiori is a lightweight macOS lyrics companion for Spotify. It displays the
 
 ## Recommended companion
 
-LyricShiori works best together with [**Spotify-Full-Screen-Playing**](https://github.com/kasou-sekai/Spotify-Full-Screen-Playing), which provides a richer Spotify lyrics synchronization experience.
+LyricShiori works best together with [**Fullscape**](https://github.com/kasou-sekai/Fullscape), which provides a richer Spotify lyrics synchronization experience.
 
-Enable **Connect to Full-Screen Playing plugin** in **Settings → General** to connect it.
+Enable **Connect to Fullscape plugin** in **Settings → General** to connect it.
 
 ## Spotify permission
 

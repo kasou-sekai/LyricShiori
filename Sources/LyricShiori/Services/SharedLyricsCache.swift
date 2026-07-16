@@ -73,14 +73,14 @@ final class SharedLyricsCache: @unchecked Sendable {
     private let decoder = JSONDecoder()
     private var memoryStore: Store?
 
-    private let cacheVersion = 10
+    private let cacheVersion = 1
     private let readyTTL: Int64 = 14 * 24 * 60 * 60 * 1000
     private let maxEntries = 80
 
     init(url: URL? = nil) {
         self.url = url ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Music/\(Defaults.defaultLyricsDirectoryName)", isDirectory: true)
-            .appendingPathComponent("full-screen-lyrics-cache-v10.json")
+            .appendingPathComponent("fullscape-lyrics-cache-v1.json")
     }
 
     func loadDocument(for track: TrackIdentity) throws -> LyricsDocument? {
@@ -520,7 +520,7 @@ final class SharedLyricsCache: @unchecked Sendable {
             return "Manual Shared Cache"
         }
         if isPluginEntry(entry) {
-            return entry.kind == .spotify ? "Spotify Shared Cache" : "Full-Screen Shared Cache"
+            return entry.kind == .spotify ? "Spotify Shared Cache" : "Fullscape Shared Cache"
         }
         return "LyricShiori Shared Cache"
     }
@@ -746,7 +746,7 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         }
     }
 
-    /// A recent bridge-state heartbeat means the Full-Screen Playing plugin is
+    /// A recent bridge-state heartbeat means the Fullscape plugin is
     /// currently connected, even when it is reporting a different track.
     func hasActiveConnection() -> Bool {
         stateLock.withLock {
@@ -876,7 +876,7 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
 
         if method == "POST", components.path == "/bridge-presence" {
             let presence = try JSONDecoder().decode(BridgePresence.self, from: body)
-            guard presence.client == "full-screen-playing" else {
+            guard presence.client == "fullscape" else {
                 return httpResponse(status: "400 Bad Request", origin: origin)
             }
             stateLock.withLock {

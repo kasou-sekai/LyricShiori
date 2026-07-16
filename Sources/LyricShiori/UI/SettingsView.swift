@@ -121,9 +121,9 @@ private struct GeneralSettingsView: View {
                     )
                 }
                 HStack {
-                    Toggle("Connect to Full-Screen Playing plugin", isOn: Binding(
-                        get: { store.settings.connectFullScreenPlaying },
-                        set: { store.setFullScreenPlayingConnectionEnabled($0) }
+                    Toggle("Connect to Fullscape plugin", isOn: Binding(
+                        get: { store.settings.connectFullscape },
+                        set: { store.setFullscapeConnectionEnabled($0) }
                     ))
                     Spacer()
                     ConnectionStatusIndicator(
@@ -230,13 +230,13 @@ private struct GeneralSettingsView: View {
     }
 
     private var pluginConnectionStatusColor: Color {
-        guard store.settings.connectFullScreenPlaying else { return .gray }
-        return store.isFullScreenPlayingPluginConnected ? .green : .orange
+        guard store.settings.connectFullscape else { return .gray }
+        return store.isFullscapePluginConnected ? .green : .orange
     }
 
     private var pluginConnectionStatusText: String {
-        guard store.settings.connectFullScreenPlaying else { return "Disabled" }
-        return store.isFullScreenPlayingPluginConnected ? "Plugin connected" : "Waiting for plugin"
+        guard store.settings.connectFullscape else { return "Disabled" }
+        return store.isFullscapePluginConnected ? "Plugin connected" : "Waiting for plugin"
     }
 
     private func presentUpdateResult() {
@@ -518,10 +518,10 @@ private struct SourceSettingsView: View {
     var body: some View {
         Form {
             Section("Lyrics sources") {
-                if store.settings.connectFullScreenPlaying {
-                    Label("Full-Screen Playing plugin", systemImage: "puzzlepiece.extension.fill")
+                if store.settings.connectFullscape {
+                    Label("Fullscape plugin", systemImage: "puzzlepiece.extension.fill")
                         .foregroundStyle(.secondary)
-                        .accessibilityLabel("Full-Screen Playing plugin source is enabled")
+                        .accessibilityLabel("Fullscape plugin source is enabled")
                 }
                 ForEach([LyricsProviderID.netease, .qqMusic]) { provider in
                     Toggle(provider.rawValue, isOn: Binding(

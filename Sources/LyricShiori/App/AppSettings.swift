@@ -40,7 +40,7 @@ final class AppSettings {
     var lyricsSmartFilterEnabled: Bool = true { didSet { save(lyricsSmartFilterEnabled, Keys.lyricsSmartFilterEnabled) } }
     var lyricsFilterKeys: [String] = Defaults.lyricsFilterKeys { didSet { save(lyricsFilterKeys, Keys.lyricsFilterKeys) } }
 
-    var connectFullScreenPlaying: Bool = true { didSet { save(connectFullScreenPlaying, Keys.connectFullScreenPlaying) } }
+    var connectFullscape: Bool = true { didSet { save(connectFullscape, Keys.connectFullscape) } }
 
     var useCustomLyricsSavingPath: Bool = false { didSet { save(useCustomLyricsSavingPath ? 1 : 0, Keys.lyricsSavingPathPopUpIndex) } }
     var customLyricsSavingPathBookmark: Data? { didSet { saveOptionalData(customLyricsSavingPathBookmark, Keys.lyricsCustomSavingPathBookmark) } }
@@ -128,7 +128,7 @@ final class AppSettings {
         lyricsFilterEnabled = bool(Keys.lyricsFilterEnabled, default: lyricsFilterEnabled)
         lyricsSmartFilterEnabled = bool(Keys.lyricsSmartFilterEnabled, default: lyricsSmartFilterEnabled)
         lyricsFilterKeys = stringArray(Keys.lyricsFilterKeys, default: lyricsFilterKeys)
-        connectFullScreenPlaying = bool(Keys.connectFullScreenPlaying, default: connectFullScreenPlaying)
+        connectFullscape = bool(Keys.connectFullscape, default: connectFullscape)
 
         useCustomLyricsSavingPath = integer(Keys.lyricsSavingPathPopUpIndex, default: useCustomLyricsSavingPath ? 1 : 0) != 0
         customLyricsSavingPathBookmark = defaults.data(forKey: Keys.lyricsCustomSavingPathBookmark)
@@ -386,7 +386,7 @@ private enum Keys {
     static let lyricsFilterEnabled = "LyricsFilterEnabled"
     static let lyricsSmartFilterEnabled = "LyricsSmartFilterEnabled"
     static let lyricsFilterKeys = "LyricsFilterKeys"
-    static let connectFullScreenPlaying = "ConnectFullScreenPlaying"
+    static let connectFullscape = "ConnectFullscape"
 
     static let lyricsSavingPathPopUpIndex = "LyricsSavingPathPopUpIndex"
     static let lyricsCustomSavingPathBookmark = "LyricsCustomSavingPathBookmark"

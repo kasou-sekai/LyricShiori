@@ -78,7 +78,7 @@ final class LyricShioriStore {
     var isSearching = false
     var spotifyAccessMessage = "Checking…"
     var spotifyAccessPresentationState: SpotifyAccessPresentationState = .checking
-    var isFullScreenPlayingPluginConnected = false
+    var isFullscapePluginConnected = false
     var isDesktopLyricsDragging = false
     var isPointerOverDesktopLyrics = false
     private(set) var isSpotifyFrontmost = false
@@ -126,8 +126,8 @@ final class LyricShioriStore {
     func start() {
         installSpotifyPlaybackObserver()
         installFrontmostApplicationObserver()
-        syncFullScreenPlayingConnection()
-        refreshFullScreenPlayingPluginConnectionStatus()
+        syncFullscapeConnection()
+        refreshFullscapePluginConnectionStatus()
         Task { await refreshSpotifyAuthorizationStatus() }
         syncDesktopLyricsWindow()
         if settings.automaticallyCheckForUpdates {
@@ -148,7 +148,7 @@ final class LyricShioriStore {
         pluginConnectionTask?.cancel()
         pluginConnectionTask = Task { [weak self] in
             while !Task.isCancelled {
-                self?.refreshFullScreenPlayingPluginConnectionStatus()
+                self?.refreshFullscapePluginConnectionStatus()
                 try? await Task.sleep(for: .seconds(2))
             }
         }
@@ -270,7 +270,7 @@ final class LyricShioriStore {
             // Give the extension a short discovery window. This is bounded: a
             // missing or unresponsive extension must never suppress Shiori's
             // own providers indefinitely.
-            if self?.settings.connectFullScreenPlaying == true {
+            if self?.settings.connectFullscape == true {
                 try? await Task.sleep(for: .seconds(1))
                 let deadline = ContinuousClock.now + .seconds(9)
                 while !Task.isCancelled,
@@ -945,7 +945,7 @@ final class LyricShioriStore {
                     local,
                     for: track,
                     persistLocal: false,
-                    syncShared: settings.connectFullScreenPlaying && local.selectionState.cacheSource == .manual
+                    syncShared: settings.connectFullscape && local.selectionState.cacheSource == .manual
                 )
                 return
             }
@@ -987,7 +987,7 @@ final class LyricShioriStore {
             syncDesktopLyricsWindow()
             return
         }
-        guard settings.connectFullScreenPlaying,
+        guard settings.connectFullscape,
               playback.track?.id == entry.trackUri,
               let track = playback.track else {
             return
@@ -999,23 +999,23 @@ final class LyricShioriStore {
         }
     }
 
-    func setFullScreenPlayingConnectionEnabled(_ enabled: Bool) {
-        settings.connectFullScreenPlaying = enabled
-        syncFullScreenPlayingConnection()
-        refreshFullScreenPlayingPluginConnectionStatus()
+    func setFullscapeConnectionEnabled(_ enabled: Bool) {
+        settings.connectFullscape = enabled
+        syncFullscapeConnection()
+        refreshFullscapePluginConnectionStatus()
         Task { await currentTrackChanged() }
     }
 
-    private func syncFullScreenPlayingConnection() {
-        if settings.connectFullScreenPlaying {
+    private func syncFullscapeConnection() {
+        if settings.connectFullscape {
             sharedLyricsCacheServer.start()
         } else {
             sharedLyricsCacheServer.stop()
         }
     }
 
-    private func refreshFullScreenPlayingPluginConnectionStatus() {
-        isFullScreenPlayingPluginConnected = settings.connectFullScreenPlaying
+    private func refreshFullscapePluginConnectionStatus() {
+        isFullscapePluginConnected = settings.connectFullscape
             && sharedLyricsCacheServer.hasActiveConnection()
     }
 
@@ -1057,7 +1057,7 @@ final class LyricShioriStore {
     }
 
     private func spotifyReferenceDocument(matching request: ShioriLyricsSearchRequest) -> LyricsDocument? {
-        guard settings.connectFullScreenPlaying,
+        guard settings.connectFullscape,
               let track = playback.track,
               conversion.convert(
                   track.title.trimmingCharacters(in: .whitespacesAndNewlines),

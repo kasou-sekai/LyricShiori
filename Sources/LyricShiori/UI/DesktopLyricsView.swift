@@ -6,7 +6,7 @@ struct DesktopLyricsView: View {
     @Bindable var store: LyricShioriStore
 
     private let linePromotionAnimation = Animation.timingCurve(
-        // Match Full Screen Playing's lyric track: it settles briskly without
+        // Match Fullscape's lyric track: it settles briskly without
         // the spring-like rebound that makes the destination feel unstable.
         0.30, 0.15, 0.20, 1,
         duration: 0.25
