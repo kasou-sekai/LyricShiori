@@ -43,6 +43,17 @@ enum SpotifyAccessPresentationState {
     case error
 }
 
+enum LocalLyricsReusePolicy {
+    static func canUse(_ source: LyricsCacheSource, allowAutomatic: Bool) -> Bool {
+        switch source {
+        case .manual, .plugin:
+            return true
+        case .withoutPlugin:
+            return allowAutomatic
+        }
+    }
+}
+
 extension DesktopLyricsColorPreset {
     /// All presets use a dark, near-opaque outline. This keeps the bright lyric
     /// colours legible on light wallpapers without sacrificing dark wallpapers.
@@ -548,9 +559,7 @@ final class LyricShioriStore {
         do {
             document.desktopLyricsColors = currentDesktopLyricsColors()
             currentLyrics = document
-            if document.selectionState.cacheSource == .manual {
-                _ = try localLyricsStorage().save(document, for: track)
-            }
+            _ = try localLyricsStorage().save(document, for: track)
             try sharedLyricsCache.save(document, for: track)
             currentLyrics?.needsPersist = false
         } catch {
@@ -971,7 +980,12 @@ final class LyricShioriStore {
 
     private func loadCachedLyricsForCurrentTrack(_ track: TrackIdentity, allowAutomatic: Bool? = nil) {
         do {
-            if let local = try localLyricsStorage().loadLyrics(for: track) {
+            let shouldAllowAutomatic = allowAutomatic ?? !isFullscapePluginConnected
+            if let local = try localLyricsStorage().loadLyrics(for: track),
+               LocalLyricsReusePolicy.canUse(
+                   local.selectionState.cacheSource,
+                   allowAutomatic: shouldAllowAutomatic
+               ) {
                 useCachedLyrics(
                     local,
                     for: track,
@@ -985,14 +999,14 @@ final class LyricShioriStore {
             // restarted desktop app must immediately reuse lyrics that the
             // extension has already cached instead of waiting for another POST.
             let shared: LyricsDocument?
-            if allowAutomatic ?? !isFullscapePluginConnected {
+            if shouldAllowAutomatic {
                 shared = try sharedLyricsCache.loadDocument(for: track)
             } else {
                 shared = try sharedLyricsCache.loadManualDocument(for: track)
                     ?? sharedLyricsCache.loadPluginDocument(for: track)
             }
             if let shared {
-                useCachedLyrics(shared, for: track, persistLocal: false, syncShared: false)
+                useCachedLyrics(shared, for: track, persistLocal: true, syncShared: false)
                 return
             }
 
@@ -1024,6 +1038,13 @@ final class LyricShioriStore {
             activeSearchID = UUID()
             syncDesktopLyricsWindow()
             return
+        }
+        if let cached = sharedLyricsCache.localPersistenceDocument(from: entry) {
+            let existing = try? localLyricsStorage().loadLyrics(for: cached.track)
+            if existing?.selectionState.cacheSource != .manual
+                || cached.document.selectionState.cacheSource == .manual {
+                persistLocalLyrics(cached.document, for: cached.track)
+            }
         }
         guard settings.connectFullscape,
               playback.track?.id == entry.trackUri,
@@ -1078,7 +1099,6 @@ final class LyricShioriStore {
     }
 
     private func persistLocalLyrics(_ document: LyricsDocument, for track: TrackIdentity) {
-        guard document.selectionState.cacheSource == .manual else { return }
         do {
             var copy = document
             if copy.desktopLyricsColors == nil {

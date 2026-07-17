@@ -356,6 +356,31 @@ final class LyricsSafetyTests: XCTestCase {
         XCTAssertNil(try storage.loadLyrics(for: makeTrack(id: "spotify:track:track-two")))
     }
 
+    func testLocalLyricsPreserveAutomaticAndPluginSources() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = LocalLyricsStorage(baseDirectory: directory)
+        let track = makeTrack(id: "spotify:track:automatic-source")
+
+        var automatic = makeDocument()
+        automatic.selectionState = .automaticSearch(cachedWithoutPlugin: true)
+        _ = try storage.save(automatic, for: track)
+        XCTAssertEqual(try storage.loadLyrics(for: track)?.selectionState.cacheSource, .withoutPlugin)
+
+        var plugin = makeDocument()
+        plugin.selectionState = .plugin
+        _ = try storage.save(plugin, for: track)
+        XCTAssertEqual(try storage.loadLyrics(for: track)?.selectionState.cacheSource, .plugin)
+    }
+
+    func testConnectedPluginSkipsOnlyAppAutomaticLocalLyrics() {
+        XCTAssertTrue(LocalLyricsReusePolicy.canUse(.manual, allowAutomatic: false))
+        XCTAssertTrue(LocalLyricsReusePolicy.canUse(.plugin, allowAutomatic: false))
+        XCTAssertFalse(LocalLyricsReusePolicy.canUse(.withoutPlugin, allowAutomatic: false))
+        XCTAssertTrue(LocalLyricsReusePolicy.canUse(.withoutPlugin, allowAutomatic: true))
+    }
+
     func testLocalLyricsTrustTrackIdentityAfterMetadataChanges() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

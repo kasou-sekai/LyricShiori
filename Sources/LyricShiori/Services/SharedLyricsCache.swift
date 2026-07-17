@@ -350,6 +350,25 @@ final class SharedLyricsCache: @unchecked Sendable {
         return try save(entry) == .saved ? entry : nil
     }
 
+    func localPersistenceDocument(from entry: Entry) -> (track: TrackIdentity, document: LyricsDocument)? {
+        let title = entry.metadata?.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let artist = entry.metadata?.artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard isSpotifyTrack(entry.trackUri), !title.isEmpty, !artist.isEmpty, !entry.lines.isEmpty else {
+            return nil
+        }
+        let track = TrackIdentity(
+            id: entry.trackUri,
+            title: title,
+            artist: artist,
+            album: entry.metadata?.album,
+            duration: nil,
+            albumArtworkURL: nil,
+            localFileURL: nil,
+            embeddedLyrics: nil
+        )
+        return (track, document(from: entry, track: track))
+    }
+
     private func document(from entry: Entry, track: TrackIdentity) -> LyricsDocument {
         let lines = entry.lines.compactMap { line -> LyricsLine? in
             guard let time = line.time else { return nil }
