@@ -62,6 +62,8 @@ struct PlaybackSnapshot: Equatable, Sendable {
 }
 
 struct LyricsDocument: Identifiable, Equatable {
+    private static let qqMusicTimingCorrection: TimeInterval = 0.2
+
     var id = UUID()
     var metadata: LyricsMetadata
     var lines: [LyricsLine]
@@ -74,7 +76,10 @@ struct LyricsDocument: Identifiable, Equatable {
     var desktopLyricsColors: DesktopLyricsColors? = nil
 
     var adjustedDelay: TimeInterval {
-        TimeInterval(offsetMilliseconds) / 1000
+        let providerCorrection = sourceName?.caseInsensitiveCompare(LyricsProviderID.qqMusic.rawValue) == .orderedSame
+            ? Self.qqMusicTimingCorrection
+            : 0
+        return TimeInterval(offsetMilliseconds) / 1000 + providerCorrection
     }
 
     var lrcs: String {

@@ -508,6 +508,20 @@ final class LyricsSafetyTests: XCTestCase {
         XCTAssertTrue(quarantined.contains { $0.lastPathComponent.contains("corrupt-") })
     }
 
+    func testQQMusicLyricsApplyProviderTimingCorrectionWithoutChangingManualOffset() {
+        var document = makeDocument()
+        document.sourceName = LyricsProviderID.qqMusic.rawValue
+
+        XCTAssertEqual(document.offsetMilliseconds, 0)
+        XCTAssertEqual(document.adjustedDelay, 0.2, accuracy: 0.000_1)
+
+        document.offsetMilliseconds = 150
+        XCTAssertEqual(document.adjustedDelay, 0.35, accuracy: 0.000_1)
+
+        document.sourceName = LyricsProviderID.netease.rawValue
+        XCTAssertEqual(document.adjustedDelay, 0.15, accuracy: 0.000_1)
+    }
+
     private func makeTrack(id: String) -> TrackIdentity {
         TrackIdentity(
             id: id,
