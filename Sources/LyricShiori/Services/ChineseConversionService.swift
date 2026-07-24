@@ -19,6 +19,22 @@ struct PassthroughChineseConversionService: ChineseConversionService {
     }
 }
 
+enum LyricsChineseConversionPolicy {
+    static func mode(
+        forLyricsLanguageCode languageCode: String?,
+        selectedMode: ChineseConversionMode
+    ) -> ChineseConversionMode {
+        switch (languageCode, selectedMode) {
+        case ("zh-Hans", .traditional):
+            .traditional
+        case ("zh-Hant", .simplified):
+            .simplified
+        default:
+            .disabled
+        }
+    }
+}
+
 extension StringTransform {
     fileprivate static let traditionalToSimplified = StringTransform(
         rawValue: "Traditional-Simplified"

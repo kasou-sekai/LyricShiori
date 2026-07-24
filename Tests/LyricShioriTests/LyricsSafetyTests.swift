@@ -153,6 +153,49 @@ final class LyricsSafetyTests: XCTestCase {
         XCTAssertEqual(matched?.isMatched, true)
     }
 
+    func testLyricsLanguageRecognitionDistinguishesChineseScriptsAndJapanese() {
+        XCTAssertEqual(
+            LyricsLanguageRecognizer.recognize(in: "后来我们都哭了\n只是记得那年夏天"),
+            "zh-Hans"
+        )
+        XCTAssertEqual(
+            LyricsLanguageRecognizer.recognize(in: "後來我們都哭了\n只是記得那年夏天"),
+            "zh-Hant"
+        )
+        XCTAssertEqual(
+            LyricsLanguageRecognizer.recognize(in: "君の知らない物語\n星が降る夜に"),
+            "ja"
+        )
+    }
+
+    func testLyricsChineseConversionOnlyConvertsOppositeChineseScript() {
+        XCTAssertEqual(
+            LyricsChineseConversionPolicy.mode(
+                forLyricsLanguageCode: "zh-Hans",
+                selectedMode: .traditional
+            ),
+            .traditional
+        )
+        XCTAssertEqual(
+            LyricsChineseConversionPolicy.mode(
+                forLyricsLanguageCode: "zh-Hant",
+                selectedMode: .simplified
+            ),
+            .simplified
+        )
+
+        for languageCode in ["zh-Hans", "zh-Hant", "ja", "en", nil] {
+            let selectedMode: ChineseConversionMode = languageCode == "zh-Hans" ? .simplified : .traditional
+            XCTAssertEqual(
+                LyricsChineseConversionPolicy.mode(
+                    forLyricsLanguageCode: languageCode,
+                    selectedMode: selectedMode
+                ),
+                .disabled
+            )
+        }
+    }
+
     func testSearchDraftPrefillsLatePlaybackAndResetsForEachOpening() {
         let first = makeTrack(id: "spotify:track:first")
         var draft = SearchLyricsDraft(track: nil)

@@ -714,7 +714,13 @@ final class LyricShioriStore {
     }
 
     func converted(_ text: String) -> String {
-        conversion.convert(text, mode: settings.chineseConversionMode)
+        conversion.convert(
+            text,
+            mode: LyricsChineseConversionPolicy.mode(
+                forLyricsLanguageCode: currentLyrics?.metadata.languageCode,
+                selectedMode: settings.chineseConversionMode
+            )
+        )
     }
 
     func displayedLineText(for line: LyricsLine) -> String {

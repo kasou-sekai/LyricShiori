@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 enum LyricsParserError: LocalizedError {
     case invalidLyrics
@@ -240,14 +241,10 @@ struct LyricsParser {
 
 enum LyricsLanguageRecognizer {
     static func recognize(in text: String) -> String? {
-        if text.range(of: #"\p{Han}"#, options: .regularExpression) != nil {
-            return "zh"
-        }
-        if text.range(of: #"\p{Hiragana}|\p{Katakana}"#, options: .regularExpression) != nil {
-            return "ja"
-        }
-        if text.range(of: #"\p{Hangul}"#, options: .regularExpression) != nil {
-            return "ko"
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        if let language = recognizer.dominantLanguage {
+            return language.rawValue
         }
         return Locale.current.language.languageCode?.identifier
     }
