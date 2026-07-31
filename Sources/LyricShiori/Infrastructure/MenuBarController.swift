@@ -8,8 +8,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private let popover: NSPopover
     private var logoStatusItem: NSStatusItem?
     private var lyricsStatusItem: NSStatusItem?
-    private var lyricsHostingView: StatusItemHostingView<MenuBarLyricsTicker>?
-    private weak var popoverAnchor: NSStatusBarButton?
+    private var lyricsTickerView: MenuBarLyricsTickerView?
+    private weak var popoverAnchor: NSView?
     private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
 
@@ -76,9 +76,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             return
         }
         let popoverFrame = popover.contentViewController?.view.window?.frame
-        let anchorFrame = popoverAnchor.flatMap { button -> NSRect? in
-            guard let window = button.window else { return nil }
-            return window.convertToScreen(button.convert(button.bounds, to: nil))
+        let anchorFrame = popoverAnchor.flatMap { anchor -> NSRect? in
+            guard let window = anchor.window else { return nil }
+            return window.convertToScreen(anchor.convert(anchor.bounds, to: nil))
         }
         guard MenuBarPopoverDismissalPolicy.shouldDismiss(
             clickLocation: location,
@@ -184,34 +184,36 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         lyricsStatusItem = statusItem
         statusItem.length = lyricsStatusItemLength(for: lyrics.text, maximumWidth: width)
 
-        guard let button = statusItem.button else { return }
-        button.title = ""
-        button.image = nil
-        button.imagePosition = .noImage
-        button.alignment = .left
-        button.toolTip = lyrics.text
-        button.setAccessibilityLabel("LyricShiori lyrics")
-
-        let ticker = MenuBarLyricsTicker(lyric: lyrics)
-        if let lyricsHostingView {
-            lyricsHostingView.rootView = ticker
+        if let lyricsTickerView {
+            lyricsTickerView.lyric = lyrics
         } else {
-            let lyricsHostingView = StatusItemHostingView(rootView: ticker)
-            lyricsHostingView.translatesAutoresizingMaskIntoConstraints = false
-            button.addSubview(lyricsHostingView)
-            NSLayoutConstraint.activate([
-                lyricsHostingView.leadingAnchor.constraint(equalTo: button.leadingAnchor),
-                lyricsHostingView.trailingAnchor.constraint(equalTo: button.trailingAnchor),
-                lyricsHostingView.topAnchor.constraint(equalTo: button.topAnchor),
-                lyricsHostingView.bottomAnchor.constraint(equalTo: button.bottomAnchor),
-            ])
-            self.lyricsHostingView = lyricsHostingView
+            let lyricsTickerView = MenuBarLyricsTickerView(lyric: lyrics)
+            lyricsTickerView.onClick = { [weak self] view in
+                self?.togglePopover(view)
+            }
+            // NSStatusItem's custom-view path is the only AppKit API that
+            // redirects drawing through each secondary menu bar's inactive
+            // appearance. A subview added to `button` is cloned verbatim.
+            statusItem.view = lyricsTickerView
+            self.lyricsTickerView = lyricsTickerView
         }
+
+        let tickerHeight = statusItem.statusBar?.thickness ?? NSStatusBar.system.thickness
+        lyricsTickerView?.frame = NSRect(
+            x: 0,
+            y: 0,
+            width: statusItem.length,
+            height: tickerHeight
+        )
+        lyricsTickerView?.toolTip = lyrics.text
+        lyricsTickerView?.setAccessibilityElement(true)
+        lyricsTickerView?.setAccessibilityRole(.button)
+        lyricsTickerView?.setAccessibilityLabel("LyricShiori lyrics")
     }
 
     private func lyricsStatusItemLength(for text: String, maximumWidth: Double) -> CGFloat {
         let maximumWidth = CGFloat(min(max(maximumWidth, 80), 600))
-        let font = NSFont.systemFont(ofSize: MenuBarLyricsTicker.fontSize)
+        let font = NSFont.systemFont(ofSize: MenuBarLyricsTickerLayout.fontSize)
         let textWidth = ceil((text as NSString).size(withAttributes: [.font: font]).width)
         // Keep a small click target around short lyrics while letting the
         // configured value act purely as an upper limit.
@@ -234,28 +236,29 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     private func removeLyricsStatusItem() {
         guard let statusItem = lyricsStatusItem else { return }
+        lyricsTickerView?.stopAnimating()
         remove(statusItem)
         lyricsStatusItem = nil
-        lyricsHostingView = nil
+        lyricsTickerView = nil
     }
 
     private func remove(_ statusItem: NSStatusItem) {
-        if let button = statusItem.button, popoverAnchor === button {
+        if popoverAnchor === statusItem.button || popoverAnchor === statusItem.view {
             popover.performClose(nil)
         }
         NSStatusBar.system.removeStatusItem(statusItem)
     }
 
     @objc private func togglePopover(_ sender: Any?) {
-        guard let button = sender as? NSStatusBarButton else { return }
+        guard let anchor = sender as? NSView else { return }
 
-        if popover.isShown, popoverAnchor === button {
+        if popover.isShown, popoverAnchor === anchor {
             popover.performClose(nil)
             return
         }
 
-        popoverAnchor = button
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popoverAnchor = anchor
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
         startOutsideClickMonitoring()
     }
 }
@@ -276,65 +279,97 @@ enum MenuBarPopoverDismissalPolicy {
     }
 }
 
-private final class StatusItemHostingView<Content: View>: NSHostingView<Content> {
-    /// The status-bar button remains the hit-test target, so clicking the
-    /// scrolling text opens the same popover as clicking the logo.
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
+private final class MenuBarLyricsTickerView: NSView {
+    fileprivate var lyric: MenuBarLyric {
+        didSet {
+            updateAnimationTimer()
+            needsDisplay = true
+        }
     }
-}
 
-private struct MenuBarLyricsTicker: View {
-    static let fontSize = NSFont.systemFontSize
+    private var animationTimer: Timer?
+    fileprivate var onClick: ((NSView) -> Void)?
 
-    var lyric: MenuBarLyric
-    @State private var contentWidth: CGFloat = 0
+    init(lyric: MenuBarLyric) {
+        self.lyric = lyric
+        super.init(frame: .zero)
+        // Secondary menu bars render a redirected clone of a status item's
+        // drawing. Keeping this view non-layer-backed lets AppKit apply the
+        // inactive-screen appearance to that clone instead of copying an
+        // already composited SwiftUI layer.
+        wantsLayer = false
+    }
 
-    var body: some View {
-        GeometryReader { proxy in
-            let viewportWidth = proxy.size.width
-            let overflow = max(0, contentWidth - viewportWidth)
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
-            ZStack {
-                TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !lyric.isPlaying)) { context in
-                    Text(lyric.text)
-                        .font(.system(size: Self.fontSize))
-                        .lineLimit(1)
-                        // Keep the text at its natural line height. The status
-                        // item only needs to crop horizontal scrolling overflow;
-                        // constraining both axes here cuts CJK glyphs at the top
-                        // and bottom on some menu-bar configurations.
-                        .fixedSize(horizontal: true, vertical: true)
-                        .background(
-                            GeometryReader { contentProxy in
-                                Color.clear.preference(
-                                    key: MenuBarLyricsWidthPreferenceKey.self,
-                                    value: contentProxy.size.width
-                                )
-                            }
-                        )
-                        .offset(
-                            x: overflow > 1
-                                ? -overflow * timedScrollPhase(at: context.date)
-                                : 0
-                        )
-                        .frame(width: viewportWidth, alignment: .leading)
-                }
-            }
-            // This defines the status-bar viewport, not the text line height.
-            // ZStack centers the naturally sized text inside it.
-            .frame(width: viewportWidth, height: proxy.size.height)
-            .mask(alignment: .leading) {
-                // Extend the mask vertically so only overflowing text on the
-                // left and right is hidden.
-                Rectangle()
-                    .frame(width: viewportWidth, height: proxy.size.height + 16)
-            }
-        }
-        .onPreferenceChange(MenuBarLyricsWidthPreferenceKey.self) { width in
-            guard abs(contentWidth - width) > 0.5 else { return }
-            contentWidth = width
-        }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateAnimationTimer()
+        needsDisplay = true
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        self
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onClick?(self)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard bounds.width > 0, bounds.height > 0 else { return }
+
+        let font = NSFont.systemFont(ofSize: MenuBarLyricsTickerLayout.fontSize)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.labelColor,
+        ]
+        let text = lyric.text as NSString
+        let textSize = text.size(withAttributes: attributes)
+        let horizontalPadding: CGFloat = 4
+        let contentWidth = textSize.width + horizontalPadding * 2
+        let overflow = max(0, contentWidth - bounds.width)
+        let x = horizontalPadding - overflow * timedScrollPhase(at: Date())
+        let y = MenuBarLyricsTickerLayout.verticallyCenteredOrigin(
+            contentHeight: textSize.height,
+            viewportHeight: bounds.height
+        )
+
+        // NSView drawing is redirected separately for every menu bar clone.
+        // Clip in the current drawing context so a clone uses its own viewport
+        // and scale rather than the geometry of the focused screen's layer.
+        NSGraphicsContext.saveGraphicsState()
+        bounds.clip()
+        text.draw(at: NSPoint(x: x, y: y), withAttributes: attributes)
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    private func updateAnimationTimer() {
+        stopAnimating()
+        guard window != nil, lyric.isPlaying else { return }
+
+        let timer = Timer(
+            timeInterval: 1.0 / 60.0,
+            target: self,
+            selector: #selector(animationTimerDidFire(_:)),
+            userInfo: nil,
+            repeats: true
+        )
+        RunLoop.main.add(timer, forMode: .common)
+        animationTimer = timer
+    }
+
+    fileprivate func stopAnimating() {
+        animationTimer?.invalidate()
+        animationTimer = nil
+    }
+
+    @objc private func animationTimerDidFire(_ timer: Timer) {
+        needsDisplay = true
     }
 
     private func timedScrollPhase(at date: Date) -> CGFloat {
@@ -350,11 +385,14 @@ private struct MenuBarLyricsTicker: View {
     }
 }
 
-private struct MenuBarLyricsWidthPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
+enum MenuBarLyricsTickerLayout {
+    static let fontSize = NSFont.systemFontSize
 
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
+    static func verticallyCenteredOrigin(
+        contentHeight: CGFloat,
+        viewportHeight: CGFloat
+    ) -> CGFloat {
+        max(0, floor((viewportHeight - contentHeight) / 2))
     }
 }
 

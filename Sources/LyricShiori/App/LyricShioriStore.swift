@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import ImageIO
 import Observation
+import ServiceManagement
 import SwiftUI
 
 struct DesktopLyricsDisplayLine: Identifiable, Equatable {
@@ -90,6 +91,7 @@ final class LyricShioriStore {
     var spotifyAccessMessage = "Checking…"
     var spotifyAccessPresentationState: SpotifyAccessPresentationState = .checking
     var isFullscapePluginConnected = false
+    var isLaunchAtLoginEnabled = false
     var isDesktopLyricsDragging = false
     var isPointerOverDesktopLyrics = false
     private(set) var isSpotifyFrontmost = false
@@ -137,6 +139,7 @@ final class LyricShioriStore {
     }
 
     func start() {
+        refreshLaunchAtLoginStatus()
         installSpotifyPlaybackObserver()
         installFrontmostApplicationObserver()
         syncFullscapeConnection()
@@ -196,6 +199,25 @@ final class LyricShioriStore {
 
     func checkForUpdates() async {
         await updateService.checkForUpdates()
+    }
+
+    func refreshLaunchAtLoginStatus() {
+        isLaunchAtLoginEnabled = SMAppService.mainApp.status == .enabled
+    }
+
+    func setLaunchAtLoginEnabled(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            lastError = enabled
+                ? "Could not enable launch at login: \(error.localizedDescription)"
+                : "Could not disable launch at login: \(error.localizedDescription)"
+        }
+        refreshLaunchAtLoginStatus()
     }
 
     func installAvailableUpdate() async {

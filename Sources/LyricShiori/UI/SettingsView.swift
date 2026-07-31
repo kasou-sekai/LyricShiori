@@ -106,6 +106,13 @@ private struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Application") {
+                Toggle("Launch at login", isOn: Binding(
+                    get: { store.isLaunchAtLoginEnabled },
+                    set: { store.setLaunchAtLoginEnabled($0) }
+                ))
+            }
+
             Section("Playback") {
                 HStack {
                     Text("Spotify access")
@@ -198,6 +205,9 @@ private struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear {
+            store.refreshLaunchAtLoginStatus()
+        }
         .alert(item: $updateAlert, content: updateAlertContent)
     }
 

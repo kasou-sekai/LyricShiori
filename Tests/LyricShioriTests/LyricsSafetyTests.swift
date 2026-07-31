@@ -83,6 +83,30 @@ final class LyricsSafetyTests: XCTestCase {
         ))
     }
 
+    func testMenuBarLyricsTickerCentersTextWithoutNegativeCroppingOrigin() {
+        XCTAssertEqual(
+            MenuBarLyricsTickerLayout.verticallyCenteredOrigin(
+                contentHeight: 16,
+                viewportHeight: 24
+            ),
+            4
+        )
+        XCTAssertEqual(
+            MenuBarLyricsTickerLayout.verticallyCenteredOrigin(
+                contentHeight: 16,
+                viewportHeight: 23
+            ),
+            3
+        )
+        XCTAssertEqual(
+            MenuBarLyricsTickerLayout.verticallyCenteredOrigin(
+                contentHeight: 26,
+                viewportHeight: 24
+            ),
+            0
+        )
+    }
+
     func testDesktopLyricsHideOnHoverAlsoEnablesClickThrough() {
         XCTAssertFalse(DesktopLyricsMousePolicy.ignoresMouseEvents(
             mousePassthrough: false,
