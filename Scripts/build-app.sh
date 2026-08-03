@@ -57,6 +57,15 @@ if [[ -n "$BUILD_NUMBER" ]]; then
 fi
 if [[ -d "$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle" ]]; then
     cp -R "$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle" "$RESOURCES_DIR/"
+    for localization_root in \
+        "$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle" \
+        "$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle/Contents/Resources"; do
+        for localization_dir in "$localization_root"/*.lproj; do
+            if [[ -d "$localization_dir" ]]; then
+                cp -R "$localization_dir" "$RESOURCES_DIR/"
+            fi
+        done
+    done
 fi
 printf "APPL????" > "$CONTENTS_DIR/PkgInfo"
 chmod +x "$MACOS_DIR/$APP_NAME"

@@ -25,10 +25,17 @@ struct HeaderBar: View {
     var body: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading) {
-                Text(store.playback.track?.title ?? "No Track")
-                    .font(.title3.weight(.semibold))
-                Text(store.playback.track?.artist ?? "Waiting for a player adapter")
-                    .foregroundStyle(.secondary)
+                if let track = store.playback.track {
+                    Text(track.title)
+                        .font(.title3.weight(.semibold))
+                    Text(track.artist)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("No Track")
+                        .font(.title3.weight(.semibold))
+                    Text("Waiting for a player adapter")
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
             PlaybackControls(store: store)

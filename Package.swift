@@ -4,6 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "LyricShiori",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v14),
     ],
@@ -23,6 +24,7 @@ let package = Package(
             exclude: ["Supporting/Info.plist"],
             resources: [
                 .copy("Resources/emoji-bookmark-template.png"),
+                .process("Resources/Localizable.xcstrings"),
             ]
         ),
         .testTarget(

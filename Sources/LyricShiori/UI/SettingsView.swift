@@ -25,6 +25,7 @@ struct SettingsView: View {
                 .tag(SettingsTab.filter)
         }
         .padding(20)
+        .environment(\.locale, store.settings.appLanguage.locale)
         .alert("LyricShiori", isPresented: errorIsPresented) {
             Button("OK") { store.lastError = nil }
         } message: {
@@ -111,6 +112,11 @@ private struct GeneralSettingsView: View {
                     get: { store.isLaunchAtLoginEnabled },
                     set: { store.setLaunchAtLoginEnabled($0) }
                 ))
+                Picker("Language", selection: $store.settings.appLanguage) {
+                    Text("Follow System").tag(AppLanguage.system)
+                    Text("English").tag(AppLanguage.english)
+                    Text("Simplified Chinese").tag(AppLanguage.simplifiedChinese)
+                }
             }
 
             Section("Playback") {
@@ -123,7 +129,7 @@ private struct GeneralSettingsView: View {
                     }
                     Spacer()
                     ConnectionStatusIndicator(
-                        text: store.spotifyAccessMessage,
+                        text: LocalizedStringKey(store.spotifyAccessMessage),
                         color: spotifyAccessStatusColor
                     )
                 }
@@ -180,7 +186,7 @@ private struct GeneralSettingsView: View {
             Section("Text") {
                 Picker("Chinese conversion", selection: $store.settings.chineseConversionMode) {
                     ForEach(ChineseConversionMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
+                        Text(LocalizedStringKey(mode.rawValue)).tag(mode)
                     }
                 }
             }
@@ -244,7 +250,7 @@ private struct GeneralSettingsView: View {
         return store.isFullscapePluginConnected ? .green : .orange
     }
 
-    private var pluginConnectionStatusText: String {
+    private var pluginConnectionStatusText: LocalizedStringKey {
         guard store.settings.connectFullscape else { return "Disabled" }
         return store.isFullscapePluginConnected ? "Plugin connected" : "Waiting for plugin"
     }
@@ -318,7 +324,7 @@ private enum UpdateAlert: Identifiable {
 }
 
 private struct ConnectionStatusIndicator: View {
-    let text: String
+    let text: LocalizedStringKey
     let color: Color
 
     var body: some View {
@@ -331,7 +337,7 @@ private struct ConnectionStatusIndicator: View {
         }
         .frame(minWidth: 160, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(text)
+        .accessibilityLabel(Text(text))
     }
 }
 
@@ -388,16 +394,16 @@ private struct DisplaySettingsView: View {
                 if store.settings.desktopLyricsVerticalLayout {
                     Picker("Column direction", selection: $store.settings.desktopLyricsVerticalDirection) {
                         ForEach(DesktopLyricsVerticalDirection.allCases) { direction in
-                            Text(direction.rawValue).tag(direction)
+                            Text(LocalizedStringKey(direction.rawValue)).tag(direction)
                         }
                     }
                     .pickerStyle(.segmented)
                 }
                 Picker("Alignment", selection: $store.settings.desktopLyricsAlignment) {
                     ForEach(DesktopLyricsAlignment.allCases) { alignment in
-                        Text(store.settings.desktopLyricsVerticalLayout
+                        Text(LocalizedStringKey(store.settings.desktopLyricsVerticalLayout
                             ? alignment.verticalDisplayName
-                            : alignment.rawValue)
+                            : alignment.rawValue))
                             .tag(alignment)
                     }
                 }
@@ -407,7 +413,7 @@ private struct DisplaySettingsView: View {
             Section("Appearance") {
                 Picker("Colour preset", selection: $store.settings.desktopLyricsColorPreset) {
                     ForEach(DesktopLyricsColorPreset.allCases) { preset in
-                        Text(preset.displayName).tag(preset)
+                        Text(LocalizedStringKey(preset.displayName)).tag(preset)
                     }
                 }
                 DesktopLyricsPresetPreview(preset: store.settings.desktopLyricsColorPreset, store: store)

@@ -26,6 +26,7 @@ struct StatusMenuView: View {
         }
         .frame(width: 320)
         .fixedSize(horizontal: false, vertical: true)
+        .environment(\.locale, store.settings.appLanguage.locale)
     }
 
     private var displaySection: some View {
@@ -158,12 +159,21 @@ private struct CurrentTrackSummary: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(store.playback.track?.title ?? "No Track")
-                .font(.headline)
-                .lineLimit(1)
-            Text(store.playback.track?.artist ?? store.playback.status.rawValue.capitalized)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            if let track = store.playback.track {
+                Text(track.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(track.artist)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            } else {
+                Text("No Track")
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(LocalizedStringKey(store.playback.status.rawValue.capitalized))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             if let lyrics = store.currentLyrics,
                let source = lyrics.sourceName,
                !source.isEmpty {

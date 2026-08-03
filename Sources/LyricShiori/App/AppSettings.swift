@@ -49,6 +49,7 @@ final class AppSettings {
     var noSearchingTrackIDs: Set<String> = [] { didSet { save(Array(noSearchingTrackIDs).sorted(), Keys.noSearchingTrackIDs) } }
     var chineseConversionMode: ChineseConversionMode = .disabled { didSet { save(chineseConversionMode.rawValue, Keys.chineseConversionMode) } }
     var automaticallyCheckForUpdates: Bool = true { didSet { save(automaticallyCheckForUpdates, Keys.automaticallyCheckForUpdates) } }
+    var appLanguage: AppLanguage = .system { didSet { save(appLanguage.rawValue, Keys.appLanguage) } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -137,6 +138,7 @@ final class AppSettings {
         noSearchingTrackIDs = Set(stringArray(Keys.noSearchingTrackIDs, default: Array(noSearchingTrackIDs)))
         chineseConversionMode = ChineseConversionMode(rawValue: string(Keys.chineseConversionMode, default: chineseConversionMode.rawValue)) ?? .disabled
         automaticallyCheckForUpdates = bool(Keys.automaticallyCheckForUpdates, default: automaticallyCheckForUpdates)
+        appLanguage = AppLanguage(rawValue: string(Keys.appLanguage, default: appLanguage.rawValue)) ?? .system
     }
 
     private func save(_ value: Bool, _ key: String) {
@@ -225,6 +227,23 @@ final class AppSettings {
             return defaultValue
         }
         return Color(color)
+    }
+}
+
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case system
+    case english = "en"
+    case simplifiedChinese = "zh-Hans"
+
+    var id: Self { self }
+
+    var locale: Locale {
+        switch self {
+        case .system:
+            .autoupdatingCurrent
+        case .english, .simplifiedChinese:
+            Locale(identifier: rawValue)
+        }
     }
 }
 
@@ -395,4 +414,5 @@ private enum Keys {
     static let noSearchingTrackIDs = "NoSearchingTrackIds"
     static let chineseConversionMode = "ChineseConversionMode"
     static let automaticallyCheckForUpdates = "AutomaticallyCheckForUpdates"
+    static let appLanguage = "AppLanguage"
 }

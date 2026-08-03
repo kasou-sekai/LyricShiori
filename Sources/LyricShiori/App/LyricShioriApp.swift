@@ -19,6 +19,7 @@ struct LyricShioriApp: App {
             SettingsView(store: store)
                 .frame(width: 860, height: 640)
         }
+        .environment(\.locale, store.settings.appLanguage.locale)
         .commands {
             LyricShioriCommands(store: store)
         }

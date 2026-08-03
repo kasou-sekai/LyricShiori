@@ -77,6 +77,7 @@ struct SearchLyricsView: View {
         } message: {
             Text(store.lastError ?? "")
         }
+        .environment(\.locale, store.settings.appLanguage.locale)
     }
 
     private var searchControls: some View {
@@ -121,8 +122,12 @@ struct SearchLyricsView: View {
             && draft.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var resultCountTitle: String {
-        store.searchResults.isEmpty ? "Results" : "Results (\(store.searchResults.count))"
+    private var resultCountTitle: Text {
+        if store.searchResults.isEmpty {
+            Text("Results")
+        } else {
+            Text("Results (\(store.searchResults.count))")
+        }
     }
 
     private var errorIsPresented: Binding<Bool> {

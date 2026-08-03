@@ -16,12 +16,17 @@ final class SearchLyricsWindowController {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "Search Lyrics"
             window.minSize = NSSize(width: 640, height: 440)
             window.isReleasedWhenClosed = false
             window.collectionBehavior = [.managed]
             self.window = window
         }
+
+        window?.title = String(
+            localized: "Search Lyrics",
+            bundle: .module,
+            locale: store.settings.appLanguage.locale
+        )
 
         // `show` is called only from explicit user actions. Rebuilding the root
         // here gives every opening a fresh current-track draft while keeping the

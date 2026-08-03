@@ -57,6 +57,18 @@ final class LyricsSafetyTests: XCTestCase {
         XCTAssertTrue(AppSettings(defaults: defaults).hideDesktopLyricsWhenSpotifyIsFrontmost)
     }
 
+    func testAppLanguagePreferencePersists() {
+        let suiteName = "LyricShioriTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.appLanguage, .system)
+
+        settings.appLanguage = .simplifiedChinese
+        XCTAssertEqual(AppSettings(defaults: defaults).appLanguage, .simplifiedChinese)
+    }
+
     func testMenuBarPopoverDismissesOnlyForOutsideClicks() {
         let popoverFrame = NSRect(x: 100, y: 100, width: 240, height: 300)
         let anchorFrame = NSRect(x: 260, y: 400, width: 30, height: 24)
