@@ -1,12 +1,29 @@
 import AppKit
+import Darwin
 import SwiftUI
 
 @MainActor
 final class DesktopLyricsWindowController {
+    private static var allSpacesBehavior: NSWindow.CollectionBehavior {
+        var behavior: NSWindow.CollectionBehavior = [
+            .canJoinAllSpaces,
+            .stationary,
+            .ignoresCycle,
+        ]
+        if #available(macOS 26.0, *) {
+            behavior.insert(.canJoinAllApplications)
+        } else {
+            behavior.insert(.fullScreenAuxiliary)
+        }
+        return behavior
+    }
+
     private let store: LyricShioriStore
+    private let membershipRepairer = DesktopLyricsSpaceMembershipRepairer()
     private let panel: DesktopLyricsPanel
     private let hostingController: NSHostingController<DesktopLyricsView>
     private var pointerTrackingTask: Task<Void, Never>?
+    private var spaceRepairTask: Task<Void, Never>?
     private var activeSpaceObserver: NSObjectProtocol?
     private var shouldBeVisible = false
 
@@ -24,16 +41,9 @@ final class DesktopLyricsWindowController {
         panel.hasShadow = false
         panel.isOpaque = false
         panel.isReleasedWhenClosed = false
-        panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
-        panel.level = .floating
-        panel.collectionBehavior = [
-            .canJoinAllSpaces,
-            .canJoinAllApplications,
-            .stationary,
-            .fullScreenAuxiliary,
-            .ignoresCycle,
-        ]
+        panel.level = .statusBar
+        panel.collectionBehavior = Self.allSpacesBehavior
         panel.store = store
 
         activeSpaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -57,12 +67,15 @@ final class DesktopLyricsWindowController {
         shouldBeVisible = true
         if !panel.isVisible {
             panel.orderFrontRegardless()
+            repairSpaceMembership()
         }
         updatePointerTracking()
     }
 
     func hide() {
         shouldBeVisible = false
+        spaceRepairTask?.cancel()
+        spaceRepairTask = nil
         stopPointerTracking()
         setPointerOverLyrics(false)
         if panel.isVisible {
@@ -89,12 +102,31 @@ final class DesktopLyricsWindowController {
     private func activeSpaceDidChange() {
         guard shouldBeVisible else { return }
 
-        // `isVisible` can remain true while an LSUIElement panel is still
-        // attached to the Space that was just left. Re-ordering after the
-        // active-Space notification makes AppKit attach the all-Spaces panel
-        // to the newly active Space as well.
-        panel.orderFrontRegardless()
-        updatePointerTracking()
+        // WindowServer rebuilds Space membership during the switching
+        // animation. Match Butai's approach: wait until that transition has
+        // settled, then explicitly restore this panel's membership in every
+        // current Space. A second pass covers longer full-screen transitions.
+        spaceRepairTask?.cancel()
+        spaceRepairTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(420))
+            guard !Task.isCancelled, let self, self.shouldBeVisible else { return }
+            self.repairSpaceMembership()
+            self.panel.orderFrontRegardless()
+            self.updatePointerTracking()
+
+            try? await Task.sleep(for: .milliseconds(650))
+            guard !Task.isCancelled, self.shouldBeVisible else { return }
+            if !self.panel.isOnActiveSpace {
+                self.repairSpaceMembership()
+            }
+            self.panel.orderFrontRegardless()
+            self.updatePointerTracking()
+        }
+    }
+
+    private func repairSpaceMembership() {
+        panel.collectionBehavior = Self.allSpacesBehavior
+        _ = membershipRepairer.addWindowToAllSpaces(windowNumber: panel.windowNumber)
     }
 
     private func updatePointerTracking() {
@@ -163,6 +195,69 @@ final class DesktopLyricsWindowController {
         let x = screenFrame.minX + screenFrame.width * store.settings.desktopLyricsXPositionFactor - width / 2
         let y = screenFrame.minY + screenFrame.height * (1 - store.settings.desktopLyricsYPositionFactor) - height / 2
         return NSRect(x: x, y: y, width: width, height: height)
+    }
+}
+
+/// Repairs the WindowServer membership that macOS can discard while switching
+/// Spaces. This runtime-only fallback mirrors Butai's isolated SkyLight
+/// adapter; no private identifiers are persisted.
+private struct DesktopLyricsSpaceMembershipRepairer {
+    func addWindowToAllSpaces(windowNumber: Int) -> Bool {
+        guard windowNumber > 0,
+              let symbols = DesktopLyricsSkyLightSymbols.shared,
+              let rawDisplays = symbols.copyManagedDisplaySpaces(symbols.defaultConnection())?
+                .takeRetainedValue() as? [[String: Any]] else {
+            return false
+        }
+
+        let spaceIDs = rawDisplays.flatMap { display -> [Int] in
+            guard let spaces = display["Spaces"] as? [[String: Any]] else { return [] }
+            return spaces.compactMap { $0["ManagedSpaceID"] as? Int }
+        }
+        guard !spaceIDs.isEmpty else { return false }
+
+        let windows = [NSNumber(value: windowNumber)] as CFArray
+        let spaces = Array(Set(spaceIDs)).map(NSNumber.init(value:)) as CFArray
+        return symbols.addWindowsToSpaces(
+            symbols.defaultConnection(),
+            windows,
+            spaces
+        ) == .success
+    }
+}
+
+private final class DesktopLyricsSkyLightSymbols: @unchecked Sendable {
+    typealias DefaultConnection = @convention(c) () -> Int32
+    typealias CopyManagedDisplaySpaces = @convention(c) (Int32) -> Unmanaged<CFArray>?
+    typealias AddWindowsToSpaces = @convention(c) (Int32, CFArray, CFArray) -> CGError
+
+    static let shared: DesktopLyricsSkyLightSymbols? = DesktopLyricsSkyLightSymbols()
+
+    let defaultConnection: DefaultConnection
+    let copyManagedDisplaySpaces: CopyManagedDisplaySpaces
+    let addWindowsToSpaces: AddWindowsToSpaces
+    private let handle: UnsafeMutableRawPointer
+
+    private init?() {
+        let path = "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight"
+        guard let handle = dlopen(path, RTLD_LAZY | RTLD_LOCAL),
+              let defaultConnectionSymbol = dlsym(handle, "_CGSDefaultConnection"),
+              let managedSpacesSymbol = dlsym(handle, "CGSCopyManagedDisplaySpaces"),
+              let addWindowsSymbol = dlsym(handle, "CGSAddWindowsToSpaces") else {
+            return nil
+        }
+
+        self.handle = handle
+        defaultConnection = unsafeBitCast(defaultConnectionSymbol, to: DefaultConnection.self)
+        copyManagedDisplaySpaces = unsafeBitCast(
+            managedSpacesSymbol,
+            to: CopyManagedDisplaySpaces.self
+        )
+        addWindowsToSpaces = unsafeBitCast(addWindowsSymbol, to: AddWindowsToSpaces.self)
+    }
+
+    deinit {
+        dlclose(handle)
     }
 }
 
