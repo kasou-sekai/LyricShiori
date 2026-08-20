@@ -17,8 +17,10 @@ struct LyricShioriApp: App {
     var body: some Scene {
         Settings {
             SettingsView(store: store)
-                .frame(width: 860, height: 640)
         }
+        .defaultSize(width: 920, height: 680)
+        .windowResizability(.contentMinSize)
+        .windowToolbarStyle(.unified)
         .environment(\.locale, store.settings.appLanguage.locale)
         .commands {
             LyricShioriCommands(store: store)

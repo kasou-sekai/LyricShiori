@@ -4,32 +4,50 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Bindable var store: LyricShioriStore
-    @State private var selection: SettingsTab = .general
+    @State private var selection: SettingsTab? = .general
 
     var body: some View {
-        TabView(selection: $selection) {
-            GeneralSettingsView(store: store)
-                .tabItem { Label("General", systemImage: "gearshape") }
-                .tag(SettingsTab.general)
-            DisplaySettingsView(store: store)
-                .tabItem { Label("Desktop Lyrics", systemImage: "textformat") }
-                .tag(SettingsTab.display)
-            SourceSettingsView(store: store)
-                .tabItem { Label("Sources", systemImage: "magnifyingglass") }
-                .tag(SettingsTab.sources)
-            CurrentLyricsSettingsView(store: store)
-                .tabItem { Label("Lyrics", systemImage: "music.note.list") }
-                .tag(SettingsTab.lyrics)
-            FilterSettingsView(store: store)
-                .tabItem { Label("Filter", systemImage: "line.3.horizontal.decrease.circle") }
-                .tag(SettingsTab.filter)
+        NavigationSplitView {
+            List(SettingsTab.allCases, selection: $selection) { tab in
+                Label(tab.title, systemImage: tab.symbol)
+                    .tag(tab)
+                    .padding(.vertical, 3)
+            }
+            .listStyle(.sidebar)
+            .navigationTitle("LyricShiori")
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 230)
+        } detail: {
+            VStack(spacing: 0) {
+                SettingsPageHeader(tab: selection ?? .general)
+                Divider()
+                settingsPage(selection ?? .general)
+            }
         }
-        .padding(20)
+        .frame(minWidth: 880, minHeight: 620)
+        .background(SettingsWindowConfigurator().frame(width: 0, height: 0))
         .environment(\.locale, store.settings.appLanguage.locale)
         .alert("LyricShiori", isPresented: errorIsPresented) {
             Button("OK") { store.lastError = nil }
         } message: {
             Text(store.lastError ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private func settingsPage(_ tab: SettingsTab) -> some View {
+        switch tab {
+        case .general:
+            GeneralSettingsView(store: store)
+        case .display:
+            DisplaySettingsView(store: store)
+        case .sources:
+            SourceSettingsView(store: store)
+        case .lyrics:
+            CurrentLyricsSettingsView(store: store)
+                .padding(20)
+        case .filter:
+            FilterSettingsView(store: store)
+                .padding(20)
         }
     }
 
@@ -41,12 +59,98 @@ struct SettingsView: View {
     }
 }
 
-private enum SettingsTab: Hashable {
+private struct SettingsWindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> SettingsWindowProbe {
+        SettingsWindowProbe(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: SettingsWindowProbe, context: Context) {
+        nsView.configureWindowIfNeeded()
+    }
+}
+
+private final class SettingsWindowProbe: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        configureWindowIfNeeded()
+    }
+
+    func configureWindowIfNeeded() {
+        guard let window else { return }
+        if !window.styleMask.contains(.miniaturizable) {
+            window.styleMask.insert(.miniaturizable)
+        }
+        window.standardWindowButton(.miniaturizeButton)?.isEnabled = true
+    }
+}
+
+private enum SettingsTab: String, CaseIterable, Identifiable {
     case lyrics
     case general
     case display
     case sources
     case filter
+
+    var id: String { rawValue }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .general: "General"
+        case .display: "Desktop Lyrics"
+        case .sources: "Sources"
+        case .lyrics: "Lyrics"
+        case .filter: "Filter"
+        }
+    }
+
+    var subtitle: LocalizedStringKey {
+        switch self {
+        case .general: "Manage playback, menu bar, storage, language, and updates."
+        case .display: "Tune how synchronized lyrics look and behave on the desktop."
+        case .sources: "Choose where LyricShiori searches for synchronized lyrics."
+        case .lyrics: "Review, import, export, and adjust the lyrics for the current track."
+        case .filter: "Hide unwanted lyric lines with smart filtering and custom patterns."
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .display: "textformat"
+        case .sources: "magnifyingglass"
+        case .lyrics: "music.note.list"
+        case .filter: "line.3.horizontal.decrease.circle"
+        }
+    }
+}
+
+private struct SettingsPageHeader: View {
+    let tab: SettingsTab
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: tab.symbol)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 42, height: 42)
+                .lyricGlassSurface(
+                    in: RoundedRectangle(cornerRadius: 11, style: .continuous),
+                    tint: Color.accentColor.opacity(0.16),
+                    fallback: Color.accentColor.opacity(0.12)
+                )
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(tab.title)
+                    .font(.title2.weight(.semibold))
+                Text(tab.subtitle)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+    }
 }
 
 /// The live lyrics view belongs with the controls that affect it. Keeping it in
@@ -67,17 +171,20 @@ private struct CurrentLyricsSettingsView: View {
                 } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
+                .lyricGlassButton()
                 Button {
                     exporting = true
                 } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
+                .lyricGlassButton()
                 .disabled(store.currentLyrics == nil)
                 Button {
                     store.showSearchLyricsWindow()
                 } label: {
                     Label("Search", systemImage: "magnifyingglass")
                 }
+                .lyricGlassButton(prominent: true)
                 .disabled(store.playback.track == nil)
             }
             .padding(.bottom, 12)
@@ -127,6 +234,7 @@ private struct GeneralSettingsView: View {
                     } label: {
                         Label("Authorize Spotify", systemImage: "lock.open")
                     }
+                    .lyricGlassButton()
                     Spacer()
                     ConnectionStatusIndicator(
                         text: LocalizedStringKey(store.spotifyAccessMessage),
@@ -177,6 +285,7 @@ private struct GeneralSettingsView: View {
                 } label: {
                     Label("Choose Folder…", systemImage: "folder")
                 }
+                .lyricGlassButton()
                 Button("Use Default Folder") {
                     store.settings.customLyricsSavingPath = nil
                 }
@@ -206,6 +315,7 @@ private struct GeneralSettingsView: View {
                             presentUpdateResult()
                         }
                     }
+                    .lyricGlassButton()
                     .disabled(store.updateService.isBusy)
                 }
             }
@@ -336,6 +446,13 @@ private struct ConnectionStatusIndicator: View {
                 .foregroundStyle(.secondary)
         }
         .frame(minWidth: 160, alignment: .leading)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .lyricGlassSurface(
+            in: Capsule(),
+            tint: color.opacity(0.12),
+            fallback: color.opacity(0.08)
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(text))
     }
@@ -576,6 +693,7 @@ private struct FilterSettingsView: View {
                 } label: {
                     Label("Add", systemImage: "plus")
                 }
+                .lyricGlassButton(prominent: true)
                 .disabled(newPattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
@@ -592,6 +710,37 @@ private struct FilterSettingsView: View {
                     ContentUnavailableView("No filter patterns", systemImage: "line.3.horizontal.decrease.circle")
                 }
             }
+        }
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func lyricGlassSurface<S: Shape>(
+        in shape: S,
+        tint: Color? = nil,
+        interactive: Bool = false,
+        fallback: Color
+    ) -> some View {
+        if #available(macOS 26.0, *) {
+            glassEffect(.regular.tint(tint).interactive(interactive), in: shape)
+        } else {
+            background(fallback, in: shape)
+        }
+    }
+
+    @ViewBuilder
+    func lyricGlassButton(prominent: Bool = false) -> some View {
+        if #available(macOS 26.0, *) {
+            if prominent {
+                buttonStyle(.glassProminent)
+            } else {
+                buttonStyle(.glass)
+            }
+        } else if prominent {
+            buttonStyle(.borderedProminent)
+        } else {
+            buttonStyle(.bordered)
         }
     }
 }

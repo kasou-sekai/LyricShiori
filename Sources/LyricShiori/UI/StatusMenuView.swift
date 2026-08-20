@@ -44,9 +44,9 @@ struct StatusMenuView: View {
                 dismiss()
             } label: {
                 Label("Search Lyrics", systemImage: "magnifyingglass")
-                    .frame(maxWidth: .infinity)
+                    .lyricPopoverButtonLabel()
             }
-            .buttonStyle(.borderedProminent)
+            .lyricGlassButton(prominent: true)
             .controlSize(.large)
         }
     }
@@ -70,14 +70,15 @@ struct StatusMenuView: View {
                 } label: {
                     Label("Decrease Offset", systemImage: "minus")
                         .labelStyle(.iconOnly)
-                        .frame(maxWidth: .infinity)
+                        .lyricPopoverButtonLabel()
                 }
 
                 Button {
                     store.resetOffset()
                 } label: {
                     Label("Reset", systemImage: "arrow.counterclockwise")
-                        .frame(maxWidth: .infinity)
+                        .labelStyle(.iconOnly)
+                        .lyricPopoverButtonLabel()
                 }
 
                 Button {
@@ -85,11 +86,11 @@ struct StatusMenuView: View {
                 } label: {
                     Label("Increase Offset", systemImage: "plus")
                         .labelStyle(.iconOnly)
-                        .frame(maxWidth: .infinity)
+                        .lyricPopoverButtonLabel()
                 }
             }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
+            .lyricGlassButton()
+            .controlSize(.large)
             .disabled(store.currentLyrics == nil)
 
             HStack(spacing: 10) {
@@ -97,7 +98,7 @@ struct StatusMenuView: View {
                     Task { await store.resetManualLyricsSelection() }
                 } label: {
                     Label("Use Automatic Lyrics", systemImage: "arrow.clockwise")
-                        .frame(maxWidth: .infinity)
+                        .lyricPopoverButtonLabel()
                 }
                 .disabled(!store.hasManualLyricsSelection)
                 .help("Forget the manually selected lyrics for this track and choose lyrics automatically")
@@ -106,12 +107,12 @@ struct StatusMenuView: View {
                     store.markWrongLyrics()
                 } label: {
                     Label("Wrong Lyrics", systemImage: "exclamationmark.triangle")
-                        .frame(maxWidth: .infinity)
+                        .lyricPopoverButtonLabel()
                 }
                 .disabled(store.playback.track == nil)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
+            .lyricGlassButton()
+            .controlSize(.large)
         }
     }
 
@@ -137,6 +138,19 @@ struct StatusMenuView: View {
         .buttonStyle(.borderless)
     }
 
+}
+
+private extension View {
+    func lyricPopoverButtonLabel() -> some View {
+        Color.clear
+            .frame(maxWidth: .infinity)
+            .frame(height: 16)
+            .overlay {
+                self
+                    .font(.system(size: 14, weight: .medium))
+                    .lineLimit(1)
+            }
+    }
 }
 
 private struct PopoverSectionTitle: View {

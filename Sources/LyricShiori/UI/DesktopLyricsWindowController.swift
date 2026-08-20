@@ -7,6 +7,8 @@ final class DesktopLyricsWindowController {
     private let panel: DesktopLyricsPanel
     private let hostingController: NSHostingController<DesktopLyricsView>
     private var pointerTrackingTask: Task<Void, Never>?
+    private var activeSpaceObserver: NSObjectProtocol?
+    private var shouldBeVisible = false
 
     init(store: LyricShioriStore) {
         self.store = store
@@ -22,12 +24,37 @@ final class DesktopLyricsWindowController {
         panel.hasShadow = false
         panel.isOpaque = false
         panel.isReleasedWhenClosed = false
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
         panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        panel.collectionBehavior = [
+            .canJoinAllSpaces,
+            .canJoinAllApplications,
+            .stationary,
+            .fullScreenAuxiliary,
+            .ignoresCycle,
+        ]
         panel.store = store
+
+        activeSpaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.activeSpaceDidChange()
+            }
+        }
+    }
+
+    isolated deinit {
+        if let activeSpaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activeSpaceObserver)
+        }
     }
 
     func show() {
+        shouldBeVisible = true
         if !panel.isVisible {
             panel.orderFrontRegardless()
         }
@@ -35,6 +62,7 @@ final class DesktopLyricsWindowController {
     }
 
     func hide() {
+        shouldBeVisible = false
         stopPointerTracking()
         setPointerOverLyrics(false)
         if panel.isVisible {
@@ -56,6 +84,17 @@ final class DesktopLyricsWindowController {
         }
         updatePointerTracking()
         applyMouseEventPolicy()
+    }
+
+    private func activeSpaceDidChange() {
+        guard shouldBeVisible else { return }
+
+        // `isVisible` can remain true while an LSUIElement panel is still
+        // attached to the Space that was just left. Re-ordering after the
+        // active-Space notification makes AppKit attach the all-Spaces panel
+        // to the newly active Space as well.
+        panel.orderFrontRegardless()
+        updatePointerTracking()
     }
 
     private func updatePointerTracking() {

@@ -2,11 +2,15 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="$ROOT_DIR/.build"
+BUILD_DIR="${LYRICSHIORI_BUILD_ROOT:-$ROOT_DIR/.build/sdk27}"
 DIST_DIR="$ROOT_DIR/dist"
 APP_NAME="LyricShiori"
 BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-release}"
 PREBUILT_BIN_DIR="${PREBUILT_BIN_DIR:-}"
+DEVELOPER_ROOT="${DEVELOPER_DIR:-/Volumes/Data/Applications/Xcode-beta.app/Contents/Developer}"
+SWIFT_EXEC="$DEVELOPER_ROOT/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
+SDK_PATH="$(DEVELOPER_DIR="$DEVELOPER_ROOT" xcrun --sdk macosx --show-sdk-path)"
+SDK_VERSION="$(DEVELOPER_DIR="$DEVELOPER_ROOT" xcrun --sdk macosx --show-sdk-version)"
 APP_PATH="$DIST_DIR/$APP_NAME.app"
 CONTENTS_DIR="$APP_PATH/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
@@ -15,10 +19,11 @@ INFO_PLIST="$ROOT_DIR/Sources/LyricShiori/Supporting/Info.plist"
 MARKETING_VERSION="${MARKETING_VERSION:-}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
 
-mkdir -p "$BUILD_DIR/home" "$DIST_DIR"
+mkdir -p "$BUILD_DIR/clang-module-cache" "$DIST_DIR"
 
-export HOME="${SWIFTPM_HOME:-$BUILD_DIR/home}"
 export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$BUILD_DIR/clang-module-cache}"
+export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-$BUILD_DIR/clang-module-cache}"
+export PATH="$DEVELOPER_ROOT/usr/bin:$DEVELOPER_ROOT/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
 
 if [[ "$BUILD_CONFIGURATION" != "debug" && "$BUILD_CONFIGURATION" != "release" ]]; then
     echo "BUILD_CONFIGURATION must be debug or release." >&2
@@ -32,8 +37,21 @@ if [[ -n "$PREBUILT_BIN_DIR" ]]; then
         exit 1
     fi
 else
-    swift build --configuration "$BUILD_CONFIGURATION" --scratch-path "$BUILD_DIR"
-    BIN_DIR="$(swift build --configuration "$BUILD_CONFIGURATION" --scratch-path "$BUILD_DIR" --show-bin-path)"
+    "$SWIFT_EXEC" build \
+        --build-system native \
+        --configuration "$BUILD_CONFIGURATION" \
+        --scratch-path "$BUILD_DIR" \
+        --sdk "$SDK_PATH" \
+        -Xlinker -platform_version \
+        -Xlinker macos \
+        -Xlinker 14.0 \
+        -Xlinker "$SDK_VERSION"
+    BIN_DIR="$("$SWIFT_EXEC" build \
+        --build-system native \
+        --configuration "$BUILD_CONFIGURATION" \
+        --scratch-path "$BUILD_DIR" \
+        --sdk "$SDK_PATH" \
+        --show-bin-path)"
 fi
 
 rm -rf "$APP_PATH"
@@ -74,4 +92,11 @@ if command -v codesign >/dev/null 2>&1; then
     codesign --force --sign - "$APP_PATH" >/dev/null
 fi
 
+LINKED_SDK="$(vtool -show-build "$MACOS_DIR/$APP_NAME" | awk '/sdk / { print $2; exit }')"
+if [[ "$LINKED_SDK" != "$SDK_VERSION" ]]; then
+    echo "Expected linked SDK $SDK_VERSION, got $LINKED_SDK." >&2
+    exit 3
+fi
+
 echo "$APP_PATH"
+echo "Linked against macOS SDK $LINKED_SDK"
