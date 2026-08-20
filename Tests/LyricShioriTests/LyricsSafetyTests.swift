@@ -67,6 +67,21 @@ final class LyricsSafetyTests: XCTestCase {
 
         settings.appLanguage = .simplifiedChinese
         XCTAssertEqual(AppSettings(defaults: defaults).appLanguage, .simplifiedChinese)
+
+        settings.appLanguage = .traditionalChinese
+        XCTAssertEqual(AppSettings(defaults: defaults).appLanguage, .traditionalChinese)
+
+        settings.appLanguage = .japanese
+        XCTAssertEqual(AppSettings(defaults: defaults).appLanguage, .japanese)
+    }
+
+    func testSystemAppLanguageSupportsKnownLanguagesAndFallsBackToEnglish() {
+        XCTAssertEqual(AppLanguage.systemLocale(preferredLanguages: ["en-AU"]).identifier, "en")
+        XCTAssertEqual(AppLanguage.systemLocale(preferredLanguages: ["zh-CN"]).identifier, "zh-Hans")
+        XCTAssertEqual(AppLanguage.systemLocale(preferredLanguages: ["zh-Hant-HK"]).identifier, "zh-Hant")
+        XCTAssertEqual(AppLanguage.systemLocale(preferredLanguages: ["ja-JP"]).identifier, "ja")
+        XCTAssertEqual(AppLanguage.systemLocale(preferredLanguages: ["fr-FR", "ja-JP"]).identifier, "en")
+        XCTAssertEqual(AppLanguage.systemLocale(preferredLanguages: []).identifier, "en")
     }
 
     func testMenuBarPopoverDismissesOnlyForOutsideClicks() {

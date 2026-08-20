@@ -16,6 +16,8 @@ CONTENTS_DIR="$APP_PATH/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 INFO_PLIST="$ROOT_DIR/Sources/LyricShiori/Supporting/Info.plist"
+LOCALIZATION_CATALOG="$ROOT_DIR/Sources/LyricShiori/Resources/Localizable.xcstrings"
+XCSTRINGS_TOOL="$DEVELOPER_ROOT/usr/bin/xcstringstool"
 MARKETING_VERSION="${MARKETING_VERSION:-}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
 
@@ -75,9 +77,26 @@ if [[ -n "$BUILD_NUMBER" ]]; then
 fi
 if [[ -d "$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle" ]]; then
     cp -R "$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle" "$RESOURCES_DIR/"
+    BUNDLE_PATH="$RESOURCES_DIR/${APP_NAME}_${APP_NAME}.bundle"
+    if [[ -d "$BUNDLE_PATH/Contents/Resources" ]]; then
+        BUNDLE_RESOURCES="$BUNDLE_PATH/Contents/Resources"
+    else
+        BUNDLE_RESOURCES="$BUNDLE_PATH"
+    fi
+
+    # SwiftPM's native build currently copies string catalogs verbatim instead
+    # of compiling them. Runtime localization requires Localizable.strings in
+    # language-specific .lproj directories, so compile the catalog explicitly.
+    if [[ ! -x "$XCSTRINGS_TOOL" ]]; then
+        echo "xcstringstool is unavailable at $XCSTRINGS_TOOL." >&2
+        exit 4
+    fi
+    "$XCSTRINGS_TOOL" compile "$LOCALIZATION_CATALOG" \
+        --output-directory "$BUNDLE_RESOURCES"
+
     for localization_root in \
-        "$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle" \
-        "$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle/Contents/Resources"; do
+        "$BUNDLE_PATH" \
+        "$BUNDLE_PATH/Contents/Resources"; do
         for localization_dir in "$localization_root"/*.lproj; do
             if [[ -d "$localization_dir" ]]; then
                 cp -R "$localization_dir" "$RESOURCES_DIR/"
@@ -85,6 +104,13 @@ if [[ -d "$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle" ]]; then
         done
     done
 fi
+
+for language in en zh-Hans zh-Hant ja; do
+    if [[ ! -f "$RESOURCES_DIR/$language.lproj/Localizable.strings" ]]; then
+        echo "Missing compiled localization: $language.lproj/Localizable.strings" >&2
+        exit 5
+    fi
+done
 printf "APPL????" > "$CONTENTS_DIR/PkgInfo"
 chmod +x "$MACOS_DIR/$APP_NAME"
 

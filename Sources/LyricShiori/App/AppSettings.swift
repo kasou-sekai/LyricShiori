@@ -234,16 +234,43 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     case system
     case english = "en"
     case simplifiedChinese = "zh-Hans"
+    case traditionalChinese = "zh-Hant"
+    case japanese = "ja"
 
     var id: Self { self }
 
     var locale: Locale {
         switch self {
         case .system:
-            .autoupdatingCurrent
-        case .english, .simplifiedChinese:
+            Self.systemLocale(preferredLanguages: Locale.preferredLanguages)
+        case .english, .simplifiedChinese, .traditionalChinese, .japanese:
             Locale(identifier: rawValue)
         }
+    }
+
+    static func systemLocale(preferredLanguages: [String]) -> Locale {
+        guard let identifier = preferredLanguages.first?.lowercased() else {
+            return Locale(identifier: AppLanguage.english.rawValue)
+        }
+
+        let language: AppLanguage
+        if identifier == "ja" || identifier.hasPrefix("ja-") {
+            language = .japanese
+        } else if identifier == "zh-hant"
+                    || identifier.hasPrefix("zh-hant-")
+                    || identifier.hasPrefix("zh-tw")
+                    || identifier.hasPrefix("zh-hk")
+                    || identifier.hasPrefix("zh-mo") {
+            language = .traditionalChinese
+        } else if identifier == "zh-hans"
+                    || identifier.hasPrefix("zh-hans-")
+                    || identifier.hasPrefix("zh-cn")
+                    || identifier.hasPrefix("zh-sg") {
+            language = .simplifiedChinese
+        } else {
+            language = .english
+        }
+        return Locale(identifier: language.rawValue)
     }
 }
 

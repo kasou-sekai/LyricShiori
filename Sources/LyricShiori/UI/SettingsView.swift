@@ -223,6 +223,8 @@ private struct GeneralSettingsView: View {
                     Text("Follow System").tag(AppLanguage.system)
                     Text("English").tag(AppLanguage.english)
                     Text("Simplified Chinese").tag(AppLanguage.simplifiedChinese)
+                    Text("Traditional Chinese").tag(AppLanguage.traditionalChinese)
+                    Text("Japanese").tag(AppLanguage.japanese)
                 }
             }
 
