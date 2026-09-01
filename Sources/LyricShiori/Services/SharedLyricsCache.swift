@@ -184,12 +184,19 @@ final class SharedLyricsCache: @unchecked Sendable {
         defer { lock.unlock() }
 
         var store = try loadStore()
-        removeExpiredEntries(from: &store)
+        let removedExpiredEntries = removeExpiredEntries(from: &store)
         let key = cacheKey(trackUri: trackUri, kind: kind)
         guard let entry = store.entries[key], entry.expiresAt > nowMilliseconds() else {
-            store.entries.removeValue(forKey: key)
-            try persist(store)
+            // The requested entry can expire between the cleanup pass and this
+            // check. Persist only when either path actually removed something.
+            let removedRequestedEntry = store.entries.removeValue(forKey: key) != nil
+            if removedExpiredEntries || removedRequestedEntry {
+                try persist(store)
+            }
             return nil
+        }
+        if removedExpiredEntries {
+            try persist(store)
         }
         return entry
     }
@@ -260,7 +267,7 @@ final class SharedLyricsCache: @unchecked Sendable {
         defer { lock.unlock() }
 
         var store = try loadStore()
-        removeExpiredEntries(from: &store)
+        let removedExpiredEntries = removeExpiredEntries(from: &store)
         let key = cacheKey(trackUri: entry.trackUri, kind: entry.kind)
         var clearedManualReset = false
         if effectiveCacheSource(for: entry) == .manual {
@@ -268,14 +275,18 @@ final class SharedLyricsCache: @unchecked Sendable {
         }
         if effectiveCacheSource(for: store.entries[key]) == .manual,
            effectiveCacheSource(for: entry) != .manual {
-            try persist(store)
+            if removedExpiredEntries {
+                try persist(store)
+            }
             LyricsBridgeTrace.record(event: "cache.rejected.manual-preserved", entry: entry)
             return .rejected
         }
         if let existing = store.entries[key],
            effectiveCacheSource(for: entry) != .manual,
            localPersistenceSourceScore(existing) > localPersistenceSourceScore(entry) {
-            try persist(store)
+            if removedExpiredEntries {
+                try persist(store)
+            }
             LyricsBridgeTrace.record(event: "cache.rejected.source-preserved", entry: entry)
             return .rejected
         }
@@ -287,7 +298,9 @@ final class SharedLyricsCache: @unchecked Sendable {
             // replace the same cache kind with its plain Spotify fallback. Keep
             // the richer entry so word timings are never downgraded to line-only
             // lyrics by a late bridge update.
-            try persist(store)
+            if removedExpiredEntries {
+                try persist(store)
+            }
             LyricsBridgeTrace.record(event: "cache.rejected.quality-preserved", entry: entry)
             return .rejected
         }
@@ -295,7 +308,7 @@ final class SharedLyricsCache: @unchecked Sendable {
         // new lyric selection, so avoid re-persisting the cache and notifying
         // the UI to reload the current lyric file.
         if store.entries[key]?.cachedAt == entry.cachedAt {
-            if clearedManualReset {
+            if clearedManualReset || removedExpiredEntries {
                 try persist(store)
             }
             return .unchanged
@@ -684,11 +697,14 @@ final class SharedLyricsCache: @unchecked Sendable {
         memoryStore = store
     }
 
-    private func removeExpiredEntries(from store: inout Store) {
+    @discardableResult
+    private func removeExpiredEntries(from store: inout Store) -> Bool {
         let now = nowMilliseconds()
+        let previousCount = store.entries.count
         store.entries = store.entries.filter { _, entry in
             entry.expiresAt > now && !entry.trackUri.isEmpty
         }
+        return store.entries.count != previousCount
     }
 
     private func trim(_ store: inout Store) {

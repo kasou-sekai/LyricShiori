@@ -538,6 +538,43 @@ final class LyricsSafetyTests: XCTestCase {
         XCTAssertEqual(try cache.entry(trackUri: trackURI, kind: .enhanced)?.cacheSource, .manual)
     }
 
+    func testRejectedSharedCacheEntriesDoNotReplaceCacheFile() throws {
+        let now = Int64((Date().timeIntervalSince1970 * 1_000).rounded())
+
+        XCTAssertRejectedSaveDoesNotReplaceCacheFile(
+            existing: makeEntry(trackURI: "spotify:track:manual-write", cachedAt: now, source: .manual),
+            incoming: makeEntry(trackURI: "spotify:track:manual-write", cachedAt: now + 1, source: .plugin)
+        )
+        XCTAssertRejectedSaveDoesNotReplaceCacheFile(
+            existing: makeEntry(trackURI: "spotify:track:source-write", cachedAt: now, source: .plugin),
+            incoming: makeEntry(trackURI: "spotify:track:source-write", cachedAt: now + 1, source: .withoutPlugin)
+        )
+
+        var karaoke = makeEntry(trackURI: "spotify:track:quality-write", cachedAt: now, source: .plugin)
+        karaoke.lines[0].words = [.init(time: 1_000, duration: 500, text: "Line")]
+        XCTAssertRejectedSaveDoesNotReplaceCacheFile(
+            existing: karaoke,
+            incoming: makeEntry(trackURI: karaoke.trackUri, cachedAt: now + 1, source: .plugin)
+        )
+    }
+
+    func testMissingSharedCacheReadDoesNotReplaceCacheFile() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("cache.json")
+        let cache = SharedLyricsCache(url: url)
+        let now = Int64((Date().timeIntervalSince1970 * 1_000).rounded())
+        XCTAssertSaveResult(
+            try cache.save(makeEntry(trackURI: "spotify:track:existing", cachedAt: now, source: .plugin)),
+            .saved
+        )
+        let fileNumber = try cacheFileNumber(at: url)
+
+        XCTAssertNil(try cache.entry(trackUri: "spotify:track:missing", kind: .enhanced))
+        XCTAssertEqual(try cacheFileNumber(at: url), fileNumber)
+    }
+
     func testRemovingManualCacheEntriesPreservesPluginFallback() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -691,6 +728,33 @@ final class LyricsSafetyTests: XCTestCase {
             desktopLyricsColors: nil,
             debug: nil
         )
+    }
+
+    private func XCTAssertRejectedSaveDoesNotReplaceCacheFile(
+        existing: SharedLyricsCache.Entry,
+        incoming: SharedLyricsCache.Entry,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("cache.json")
+        let cache = SharedLyricsCache(url: url)
+
+        do {
+            XCTAssertSaveResult(try cache.save(existing), .saved, file: file, line: line)
+            let fileNumber = try cacheFileNumber(at: url)
+            XCTAssertSaveResult(try cache.save(incoming), .rejected, file: file, line: line)
+            XCTAssertEqual(try cacheFileNumber(at: url), fileNumber, file: file, line: line)
+        } catch {
+            XCTFail("Unexpected cache error: \(error)", file: file, line: line)
+        }
+    }
+
+    private func cacheFileNumber(at url: URL) throws -> NSNumber {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        return try XCTUnwrap(attributes[.systemFileNumber] as? NSNumber)
     }
 
     private func XCTAssertSaveResult(
