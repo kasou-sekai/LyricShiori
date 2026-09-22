@@ -1,0 +1,650 @@
+warning: '--skip-update' option is deprecated and will be removed in a future release
+warning: 'bigint': /Volumes/Data/Codes/XCode/LyricShiori/.build/sdk27/checkouts/BigInt/Package.swift:18:19: warning: 'v4' is deprecated: watchOS 9.0 is the oldest supported version [#DeprecatedDeclaration]
+16 |         .iOS(.v12),
+17 |         .tvOS(.v12),
+18 |         .watchOS(.v4),
+   |                   `- warning: 'v4' is deprecated: watchOS 9.0 is the oldest supported version [#DeprecatedDeclaration]
+19 |         .macCatalyst(.v13),
+20 |         .visionOS(.v1),
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+Building for debugging...
+[0/48] Write sources
+[2/48] Copying Info.plist
+[2/48] Write sources
+[2/48] Copying Localizable.xcstrings
+[2/48] Copying emoji-bookmark-template.png
+[2/48] Write sources
+[2/48] /Volumes/Data/Codes/XCode/LyricShiori/.build/sdk27/arm64-apple-macosx/debug/LyricShioriPackageTests.derived/runner.swift
+[2/48] Write sources
+[14/48] Copying PrivacyInfo.xcprivacy
+[14/48] Write sources
+[14/48] Write LyricShiori-entitlement.plist
+[14/48] Write sources
+[36/48] Write swift-version--525A05E66D8C668B.txt
+[38/179] Compiling MacroToolkit BooleanLiteral.swift
+[39/179] Compiling MacroToolkit ClassRestrictionType.swift
+[40/180] Compiling MacroToolkit Diagnostics.swift
+[41/180] Compiling MacroToolkit DictionaryType.swift
+[42/180] Compiling MacroToolkit EnumCase.swift
+[43/180] Compiling MacroToolkit EnumCaseAssociatedValueParameter.swift
+[44/180] Compiling MacroToolkit Attribute.swift
+[45/180] Compiling MacroToolkit AttributeListElement.swift
+[46/180] Compiling MacroToolkit ArrayType.swift
+[47/180] Compiling MacroToolkit AssociatedType.swift
+[48/180] Emitting module InternalCollectionsUtilities
+[49/180] Compiling MacroToolkit DeclGroupProtocol.swift
+[50/180] Compiling MacroToolkit Enum.swift
+[51/180] Compiling InternalCollectionsUtilities _UniqueCollection.swift
+[52/180] Compiling MacroToolkit Struct.swift
+[53/180] Compiling MacroToolkit Destructuring.swift
+[54/180] Compiling MacroToolkit Extension.swift
+[55/180] Compiling MacroToolkit Protocol.swift
+[56/180] Compiling MacroToolkit EnumCaseValue.swift
+[57/180] Compiling MacroToolkit Expr.swift
+[58/275] Compiling OrderedCollections _HashTable+Testing.swift
+[59/275] Compiling OrderedCollections _HashTable+UnsafeHandle.swift
+[60/275] Compiling OrderedCollections _HashTable.swift
+[61/275] Compiling OrderedCollections _Hashtable+Header.swift
+[62/275] Compiling OrderedCollections _HashTable+Bucket.swift
+[63/275] Compiling OrderedCollections _HashTable+BucketIterator.swift
+[64/275] Compiling OrderedCollections _HashTable+Constants.swift
+[65/275] Compiling OrderedCollections _HashTable+CustomStringConvertible.swift
+[66/278] Compiling OrderedCollections OrderedDictionary+Values.swift
+[67/278] Compiling OrderedCollections OrderedDictionary.swift
+[68/278] Compiling OrderedCollections OrderedSet+Codable.swift
+[69/278] Compiling OrderedCollections OrderedSet+CustomReflectable.swift
+[70/278] Compiling OrderedCollections OrderedSet+Descriptions.swift
+[71/278] Compiling OrderedCollections OrderedSet+Diffing.swift
+[72/278] Compiling OrderedCollections OrderedSet+Equatable.swift
+[73/278] Compiling OrderedCollections OrderedSet+ExpressibleByArrayLiteral.swift
+[74/278] Compiling OrderedCollections OrderedDictionary+Partial MutableCollection.swift
+[75/278] Compiling OrderedCollections OrderedDictionary+Partial RangeReplaceableCollection.swift
+[76/278] Compiling OrderedCollections OrderedDictionary+Sendable.swift
+[77/278] Compiling OrderedCollections OrderedDictionary+Sequence.swift
+[78/278] Compiling OrderedCollections OrderedDictionary+Hashable.swift
+[79/278] Compiling OrderedCollections OrderedDictionary+Initializers.swift
+[80/278] Compiling OrderedCollections OrderedDictionary+Invariants.swift
+[81/278] Compiling OrderedCollections OrderedDictionary+Move.swift
+[82/278] Compiling OrderedCollections OrderedSet+Hashable.swift
+[83/278] Compiling OrderedCollections OrderedSet+Initializers.swift
+[84/278] Compiling OrderedCollections OrderedSet+Insertions.swift
+[85/278] Compiling OrderedCollections OrderedSet+Invariants.swift
+[86/278] Compiling OrderedCollections OrderedDictionary+Elements.SubSequence.swift
+[87/278] Compiling OrderedCollections OrderedDictionary+Elements.swift
+[88/278] Compiling OrderedCollections OrderedDictionary+Equatable.swift
+[89/278] Compiling OrderedCollections OrderedDictionary+ExpressibleByDictionaryLiteral.swift
+[90/278] Compiling OrderedCollections OrderedDictionary+Codable.swift
+[91/278] Compiling OrderedCollections OrderedDictionary+CustomReflectable.swift
+[92/278] Compiling OrderedCollections OrderedDictionary+Deprecations.swift
+[93/278] Compiling OrderedCollections OrderedDictionary+Descriptions.swift
+[94/278] Emitting module ContainersPreview
+[95/278] Compiling ContainersPreview Shared.swift
+[96/278] Compiling ContainersPreview SpanIterator.swift
+[97/278] Compiling ContainersPreview UniqueBox.swift
+[98/302] Compiling OrderedCollections OrderedSet+Partial SetAlgebra formIntersection.swift
+[99/302] Compiling OrderedCollections OrderedSet+Partial SetAlgebra formSymmetricDifference.swift
+[100/302] Compiling OrderedCollections OrderedSet+Partial SetAlgebra formUnion.swift
+[101/302] Compiling OrderedCollections OrderedSet+Partial SetAlgebra intersection.swift
+[102/302] Compiling OrderedCollections OrderedSet+Partial SetAlgebra isDisjoint.swift
+[103/302] Compiling OrderedCollections OrderedSet+Partial SetAlgebra isEqualSet.swift
+[104/313] Compiling DequeModule RigidDeque+Removals.swift
+[110/326] Compiling OrderedCollections OrderedSet+Partial SetAlgebra symmetricDifference.swift
+[111/326] Compiling OrderedCollections OrderedSet+Partial SetAlgebra union.swift
+[112/326] Compiling OrderedCollections OrderedSet+Partial SetAlgebra+Basics.swift
+[113/326] Compiling OrderedCollections OrderedSet+RandomAccessCollection.swift
+[114/326] Compiling OrderedCollections OrderedSet+ReserveCapacity.swift
+[115/326] Compiling OrderedCollections OrderedSet+Sendable.swift
+[116/326] Compiling DequeModule UniqueDeque+Consumption.swift
+[117/326] Compiling DequeModule UniqueDeque+Container.swift
+[118/326] Compiling DequeModule UniqueDeque+Deprecated.swift
+[119/326] Compiling DequeModule UniqueDeque+Descriptions.swift
+[120/330] Compiling OrderedCollections OrderedSet+Partial SetAlgebra isStrictSubset.swift
+[121/330] Compiling OrderedCollections OrderedSet+Partial SetAlgebra isStrictSuperset.swift
+[122/330] Compiling OrderedCollections OrderedSet+Partial SetAlgebra isSubset.swift
+[123/330] Compiling OrderedCollections OrderedSet+Partial SetAlgebra isSuperset.swift
+[124/330] Compiling OrderedCollections OrderedSet+Partial SetAlgebra subtract.swift
+[125/330] Compiling OrderedCollections OrderedSet+Partial SetAlgebra subtracting.swift
+[126/330] Compiling DequeModule UniqueDeque+Equatable.swift
+[127/330] Compiling DequeModule UniqueDeque+Experimental.swift
+[128/330] Compiling DequeModule UniqueDeque+Hashable.swift
+[129/330] Compiling DequeModule UniqueDeque+Initializers.swift
+[130/330] Compiling DequeModule RigidDeque+Append.swift
+[131/330] Compiling DequeModule UniqueDeque+Insertions.swift
+[132/330] Compiling DequeModule UniqueDeque+Prepend.swift
+[133/330] Compiling DequeModule UniqueDeque+Removals.swift
+[134/330] Compiling DequeModule UniqueDeque+Replacements.swift
+[137/330] Compiling DequeModule RigidDeque+Replacements.swift
+[138/330] Compiling DequeModule RigidDeque+Testing.swift
+[139/330] Compiling DequeModule RigidDeque.swift
+[140/330] Compiling DequeModule UniqueDeque+Append.swift
+[145/330] Compiling DequeModule Deque+ExpressibleByArrayLiteral.swift
+[146/330] Compiling DequeModule Deque+Extras.swift
+[147/330] Compiling DequeModule Deque+Hashable.swift
+[148/330] Compiling DequeModule Deque+Testing.swift
+[149/330] Compiling DequeModule Deque._Storage.swift
+[150/330] Compiling DequeModule Deque+CustomReflectable.swift
+[151/330] Compiling DequeModule Deque+Descriptions.swift
+[152/330] Compiling DequeModule Deque+Equatable.swift
+[153/330] Compiling DequeModule Deque._UnsafeHandle.swift
+[154/330] Compiling DequeModule Deque.swift
+[155/330] Compiling DequeModule _DequeBuffer.swift
+[156/330] Compiling DequeModule _DequeBufferHeader.swift
+[157/330] Compiling DequeModule RigidDeque+Hashable.swift
+[158/330] Compiling DequeModule RigidDeque+Initializers.swift
+[159/330] Compiling DequeModule RigidDeque+Insertions.swift
+[160/330] Compiling DequeModule RigidDeque+Prepend.swift
+[168/330] Compiling DequeModule RigidDeque+Consumption.swift
+[169/330] Compiling DequeModule RigidDeque+Container.swift
+[170/330] Compiling DequeModule RigidDeque+Descriptions.swift
+[171/330] Compiling DequeModule RigidDeque+Equatable.swift
+[172/330] Compiling DequeModule RigidDeque+Experimental.swift
+[173/330] Compiling DequeModule Deque+Codable.swift
+[174/330] Compiling DequeModule Deque+Collection.swift
+[191/330] Compiling OrderedCollections OrderedSet+SubSequence.swift
+[192/330] Compiling OrderedCollections OrderedSet+Testing.swift
+[193/330] Compiling OrderedCollections OrderedSet+UnorderedView.swift
+[194/330] Compiling OrderedCollections OrderedSet+UnstableInternals.swift
+[195/330] Compiling OrderedCollections OrderedSet.swift
+[196/330] Compiling OrderedCollections _UnsafeBitset.swift
+[197/330] Emitting module OrderedCollections
+[198/330] Compiling DequeModule UniqueDeque.swift
+[199/330] Compiling DequeModule _DequeSlot.swift
+[200/330] Compiling DequeModule _UnsafeDequeHandle.swift
+[201/330] Compiling DequeModule _UnsafeDequeSegments.swift
+[202/330] Emitting module DequeModule
+[208/385] Compiling CryptoSwiftResources Empty.swift
+[209/385] Compiling MacroToolbox LockMacroProtocol.swift
+[210/385] Emitting module FrameworkToolboxMacros
+[211/385] Compiling AsyncAlgorithms AsyncAdjacentPairsSequence.swift
+[212/385] Compiling AsyncAlgorithms AsyncBufferedByteIterator.swift
+[213/385] Compiling AsyncAlgorithms AsyncChain2Sequence.swift
+[214/385] Compiling AsyncAlgorithms AsyncChain3Sequence.swift
+[215/385] Compiling AsyncAlgorithms AsyncChunkedByGroupSequence.swift
+[216/385] Compiling AsyncAlgorithms AsyncChunkedOnProjectionSequence.swift
+[217/390] Compiling AsyncAlgorithms FlatMapLatestStorage.swift
+[218/390] Compiling AsyncAlgorithms Disconnected.swift
+[219/392] Emitting module MacroToolkit
+[223/392] Compiling AsyncAlgorithms MergeStorage.swift
+[224/392] Compiling AsyncAlgorithms MultiProducerSingleConsumerAsyncChannel+Internal.swift
+[225/392] Compiling AsyncAlgorithms MultiProducerSingleConsumerAsyncChannel.swift
+[226/392] Compiling AsyncAlgorithms RangeReplaceableCollection.swift
+[227/392] Compiling AsyncAlgorithms Rethrow.swift
+[228/392] Compiling AsyncAlgorithms SetAlgebra.swift
+[229/392] Emitting module BigInt
+[230/392] Compiling AsyncAlgorithms AsyncJoinedSequence.swift
+[231/392] Compiling AsyncAlgorithms AsyncMapErrorSequence.swift
+[232/392] Compiling AsyncAlgorithms _TinyArray.swift
+[233/392] Compiling AsyncAlgorithms AsyncInterspersedSequence.swift
+[234/392] Compiling AsyncAlgorithms AsyncJoinedBySeparatorSequence.swift
+[235/392] Compiling AsyncAlgorithms AsyncThrowingExclusiveReductionsSequence.swift
+[236/392] Compiling AsyncAlgorithms AsyncThrowingInclusiveReductionsSequence.swift
+[237/392] Compiling AsyncAlgorithms AsyncTimerSequence.swift
+[238/392] Compiling AsyncAlgorithms AsyncBufferSequence.swift
+[239/392] Compiling AsyncAlgorithms AsyncRemoveDuplicatesSequence.swift
+[240/392] Compiling AsyncAlgorithms AsyncShareSequence.swift
+[241/392] Compiling AsyncAlgorithms AsyncSyncSequence.swift
+[242/392] Compiling AsyncAlgorithms AsyncThrottleSequence.swift
+[243/392] Compiling BigInt Subtraction.swift
+[244/392] Compiling BigInt Words and Bits.swift
+[245/392] Compiling AsyncAlgorithms UnboundedBufferStateMachine.swift
+[246/392] Compiling AsyncAlgorithms UnboundedBufferStorage.swift
+[247/392] Compiling AsyncAlgorithms AsyncChannel.swift
+[248/392] Compiling AsyncAlgorithms AsyncThrowingChannel.swift
+[249/392] Compiling AsyncAlgorithms ChannelStateMachine.swift
+[250/392] Compiling AsyncAlgorithms ChannelStorage.swift
+[255/397] Compiling MacroToolkit TupleType.swift
+[256/397] Compiling MacroToolkit Type.swift
+[257/397] Compiling AsyncAlgorithms DebounceStorage.swift
+[258/397] Compiling AsyncAlgorithms Dictionary.swift
+[259/397] Compiling AsyncAlgorithms AsyncFlatMapLatestSequence.swift
+[260/397] Compiling AsyncAlgorithms FlatMapLatestStateMachine.swift
+[263/397] Emitting module AsyncAlgorithms
+[286/397] Compiling AsyncAlgorithms AsyncMerge3Sequence.swift
+[287/397] Compiling AsyncAlgorithms MergeStateMachine.swift
+[288/397] Compiling AsyncAlgorithms AsyncChunksOfCountOrSignalSequence.swift
+[289/397] Compiling AsyncAlgorithms AsyncChunksOfCountSequence.swift
+[290/397] Compiling AsyncAlgorithms AsyncCompactedSequence.swift
+[291/397] Compiling AsyncAlgorithms AsyncExclusiveReductionsSequence.swift
+[292/397] Compiling AsyncAlgorithms AsyncInclusiveReductionsSequence.swift
+[294/397] Compiling AsyncAlgorithms AsyncCombineLatest2Sequence.swift
+[295/397] Compiling AsyncAlgorithms AsyncCombineLatest3Sequence.swift
+[296/397] Compiling AsyncAlgorithms CombineLatestStateMachine.swift
+[297/397] Compiling AsyncAlgorithms CombineLatestStorage.swift
+[298/397] Compiling AsyncAlgorithms AsyncDebounceSequence.swift
+[299/397] Compiling AsyncAlgorithms DebounceStateMachine.swift
+[300/397] Compiling AsyncAlgorithms UnsafeTransfer.swift
+[301/397] Compiling AsyncAlgorithms AsyncZip2Sequence.swift
+[302/397] Compiling AsyncAlgorithms AsyncZip3Sequence.swift
+[303/397] Compiling AsyncAlgorithms ZipStateMachine.swift
+[304/397] Compiling AsyncAlgorithms ZipStorage.swift
+[307/399] Compiling Regex Capture.swift
+[328/399] Compiling SwiftCF KernelError.swift
+[329/399] Compiling SwiftCF Utilities.swift
+[337/399] Compiling FrameworkToolboxMacros FrameworkToolboxMacroPlugin.swift
+[348/399] Compiling FrameworkToolboxMacros FrameworkToolboxCompatibleMacro.swift
+[349/399] Emitting module Regex
+[350/399] Compiling Regex Match.swift
+[352/399] Emitting module CryptoSwiftResources
+[353/399] Compiling CryptoSwiftResources resource_bundle_accessor.swift
+[355/399] Compiling Regex String+Replace.swift
+[356/399] Compiling Regex Utilities.swift
+[356/399] Write Objects.LinkFileList
+[364/399] Compiling Regex Regex.swift
+[365/399] Compiling Regex Regex+Bridge.swift
+[366/399] Compiling MacroToolbox LockPropertyParser.swift
+[367/399] Emitting module MacroToolbox
+[368/399] Emitting module SwiftCF
+[371/465] Compiling CryptoSwift CTR.swift
+[372/465] Compiling CryptoSwift CipherModeWorker.swift
+[373/476] Compiling SwiftStdlibToolboxMacros AddAsyncAllMembersMacro.swift
+[374/476] Compiling SwiftStdlibToolboxMacros AddAsyncMacro.swift
+[375/476] Compiling SwiftStdlibToolboxMacros Closure.swift
+[376/514] Compiling CryptoSwift CCM.swift
+[377/514] Compiling CryptoSwift CFB.swift
+[378/529] Compiling SwiftStdlibToolboxMacros EquatableIgnoredMacro.swift
+[379/529] Compiling SwiftStdlibToolboxMacros AddAsyncMacroCore.swift
+[380/529] Compiling SwiftStdlibToolboxMacros AddCompletionHandlerMacro.swift
+[381/529] Compiling FoundationToolboxMacros MainPlugin.swift
+[382/529] Compiling FoundationToolboxMacros OSAllocatedUnfairLockMacro.swift
+[383/529] Compiling FoundationToolboxMacros URLMacro.swift
+[384/529] Compiling FoundationToolboxMacros SelectorMacro.swift
+[385/529] Compiling SwiftStdlibToolboxMacros TypeSyntax+Extensions.swift
+[386/529] Compiling SwiftStdlibToolboxMacros IdentifierTypeSyntax+Extensions.swift
+[387/529] Compiling SwiftStdlibToolboxMacros AssociatedValueMacro.swift
+[388/529] Compiling SwiftStdlibToolboxMacros AvailableMacro.swift
+[389/529] Compiling SwiftStdlibToolboxMacros TypeDeclSyntax+Extensions.swift
+[390/529] Compiling SwiftStdlibToolboxMacros VariableDeclSyntax+Extensions.swift
+[391/529] Compiling SwiftStdlibToolboxMacros SimpleFixItMessage.swift
+[392/529] Compiling FoundationToolboxMacros LogMacro.swift
+[393/529] Emitting module FoundationToolboxMacros
+[394/529] Compiling FoundationToolboxMacros KeychainMacro.swift
+[395/529] Compiling FoundationToolboxMacros LoggableMacro.swift
+[395/529] Write Objects.LinkFileList
+[404/531] Compiling SwiftStdlibToolboxMacros MemberTypeSyntax+Extensions.swift
+[405/531] Emitting module SwiftStdlibToolboxMacros
+[406/531] Compiling SwiftStdlibToolboxMacros MainPlugin.swift
+[407/531] Compiling SwiftStdlibToolboxMacros MutexMacro.swift
+[410/531] Compiling SwiftStdlibToolboxMacros EquatableIgnoredUnsafeClosureMacro.swift
+[411/531] Compiling SwiftStdlibToolboxMacros EquatableMacro.swift
+[412/531] Compiling SwiftStdlibToolboxMacros CaseCheckableMacro.swift
+[413/531] Compiling SwiftStdlibToolboxMacros DyldInterposeMacro.swift
+[419/531] Write Objects.LinkFileList
+[421/594] Compiling IOKitExt IOHIDType.swift
+[422/594] Compiling AccessibilityExt AXNotificationInfoKey.swift
+[423/596] Compiling CoreGraphicsExt CGSize.swift
+[424/597] Compiling AccessibilityExt AXValue.swift
+[425/597] Compiling AccessibilityExt AXType.swift
+[426/597] Compiling CoreGraphicsExt CGFloat.swift
+[427/597] Compiling CoreGraphicsExt CGRect.swift
+[428/597] Compiling CoreGraphicsExt CGAffineTransform.swift
+[429/597] Compiling CoreGraphicsExt CGWindow.swift
+[430/597] Compiling IOKitExt IOHIDValue.swift
+[431/597] Compiling IOKitExt IOHIDTransaction.swift
+[432/597] Compiling CoreGraphicsExt CGPoint.swift
+[433/597] Compiling CoreGraphicsExt CGVector.swift
+[434/597] Compiling AccessibilityExt AXSubrole.swift
+[435/597] Compiling CoreTextExt CTTollFreeBridge.swift
+[436/597] Compiling CoreTextExt CTType.swift
+[437/597] Compiling IOKitExt IOHIDQueue.swift
+[438/597] Compiling AccessibilityExt AXUIElementAction.swift
+[439/597] Compiling AccessibilityExt AXUIElementAttribute.swift
+[440/597] Compiling AccessibilityExt AXUIElement.swift
+[441/597] Compiling AccessibilityExt AXObserver.swift
+[442/597] Compiling AccessibilityExt AXRole.swift
+[443/597] Compiling IOKitExt IOHIDManager.swift
+[446/597] Emitting module AccessibilityExt
+[447/597] Compiling CoreGraphicsExt CGWindowInfoKeys.swift
+[448/597] Compiling CoreTextExt CTFontAttributeKey.swift
+[449/597] Compiling CoreTextExt CTFontCollection.swift
+[450/597] Emitting module CoreGraphicsExt
+[451/597] Compiling IOKitExt IOError.swift
+[452/597] Emitting module IOKitExt
+[453/597] Compiling CoreGraphicsExt CGType.swift
+[454/597] Compiling CoreGraphicsExt CATransform3D.swift
+[455/597] Compiling ImageIOExt CGImageSource.swift
+[456/597] Compiling ImageIOExt CGImageSourceOption.swift
+[457/597] Compiling ImageIOExt ImageIOType.swift
+[458/597] Emitting module ImageIOExt
+[459/597] Compiling ImageIOExt CGImageMetadataTag.swift
+[460/597] Compiling ImageIOExt CGImageMetadataFormatSpecificDictionary.swift
+[461/597] Compiling ImageIOExt CGImageDestination.swift
+[462/597] Compiling ImageIOExt CGImagePropertyName.swift
+[463/597] Compiling ImageIOExt CGImageAuxiliaryData.swift
+[464/597] Compiling ImageIOExt CGImageMetadata.swift
+[465/597] Emitting module CryptoSwift
+[466/608] Compiling CoreTextExt CTFontTraitKey.swift
+[467/608] Compiling CoreTextExt CTFrame.swift
+[468/608] Compiling CoreTextExt CTLine.swift
+[469/608] Compiling CoreTextExt CTParagraphStyle.swift
+[477/608] Compiling CryptoSwift ECB.swift
+[478/608] Compiling CoreTextExt CTFontNameKey.swift
+[479/608] Compiling CoreTextExt CTFontPriority.swift
+[480/608] Compiling CoreTextExt CTAttributedStringKey.swift
+[481/608] Compiling CoreTextExt CTFont.swift
+[482/608] Compiling CryptoSwift Random.swift
+[483/608] Compiling CryptoSwift Shifts.swift
+[484/608] Compiling CryptoSwift SquareRoot.swift
+[485/608] Compiling CryptoSwift Strideable.swift
+[486/608] Compiling CryptoSwift StringConversion.swift
+[487/608] Compiling CryptoSwift Subtraction.swift
+[488/608] Compiling CryptoSwift WordsAndBits.swift
+[489/608] Compiling CryptoSwift ChaCha20.swift
+[490/608] Compiling CryptoSwift Checksum.swift
+[491/608] Compiling CryptoSwift Cipher.swift
+[492/608] Compiling CryptoSwift Collection+Extension.swift
+[493/608] Compiling CryptoSwift Rabbit+Foundation.swift
+[494/608] Compiling CryptoSwift String+FoundationExtension.swift
+[495/608] Compiling CryptoSwift Utils+Foundation.swift
+[496/608] Compiling CryptoSwift XChaCha20+Foundation.swift
+[497/608] Compiling CryptoSwift Generics.swift
+[498/608] Compiling CryptoSwift HKDF.swift
+[499/608] Compiling CryptoSwift HMAC.swift
+[500/608] Compiling CryptoSwift ISO10126Padding.swift
+[501/608] Compiling CryptoSwift ISO78164Padding.swift
+[502/608] Compiling CryptoSwift Int+Extension.swift
+[503/608] Compiling CryptoSwift MD5.swift
+[504/608] Compiling CryptoSwift NoPadding.swift
+[505/608] Compiling CryptoSwift Operators.swift
+[506/608] Compiling CryptoSwift DER.swift
+[507/608] Compiling CryptoSwift PBKDF1.swift
+[508/608] Compiling CryptoSwift PBKDF2.swift
+[509/608] Compiling CryptoSwift PKCS1v15.swift
+[510/608] Compiling CryptoSwift PKCS5.swift
+[511/608] Compiling CryptoSwift PKCS7.swift
+[512/608] Compiling CryptoSwift PKCS7Padding.swift
+[513/608] Compiling CryptoSwift Padding.swift
+[514/608] Compiling CryptoSwift Poly1305.swift
+[515/608] Compiling CryptoSwift CompactMap.swift
+[516/608] Compiling CryptoSwift Cryptor.swift
+[517/608] Compiling CryptoSwift Cryptors.swift
+[518/608] Compiling CryptoSwift Digest.swift
+[519/608] Compiling CryptoSwift DigestType.swift
+[520/608] Compiling CryptoSwift AES+Foundation.swift
+[521/608] Compiling CryptoSwift Array+Foundation.swift
+[522/608] Compiling CryptoSwift Blowfish+Foundation.swift
+[523/608] Compiling CryptoSwift ChaCha20+Foundation.swift
+[524/608] Compiling CryptoSwift Data+Extension.swift
+[525/608] Compiling CryptoSwift HMAC+Foundation.swift
+[526/608] Compiling CryptoSwift Codable.swift
+[527/608] Compiling CryptoSwift Comparable.swift
+[528/608] Compiling CryptoSwift DataConversion.swift
+[529/608] Compiling CryptoSwift Division.swift
+[530/608] Compiling CryptoSwift Exponentiation.swift
+[531/608] Compiling CryptoSwift FloatingPointConversion.swift
+[532/608] Compiling CryptoSwift GCD.swift
+[533/608] Compiling CryptoSwift Hashable.swift
+[534/608] Compiling CryptoSwift IntegerConversion.swift
+[535/608] Compiling CryptoSwift Multiplication.swift
+[536/608] Compiling CryptoSwift PrimeTest.swift
+[537/608] Compiling CryptoSwift RSA+Cipher.swift
+[538/608] Compiling CryptoSwift RSA+Signature.swift
+[539/608] Compiling CryptoSwift RSA.swift
+[540/608] Compiling CryptoSwift Rabbit.swift
+[541/608] Compiling CryptoSwift SHA1.swift
+[542/608] Compiling CryptoSwift SHA2.swift
+[543/608] Compiling CryptoSwift SHA3.swift
+[544/608] Compiling CryptoSwift Scrypt.swift
+[545/608] Compiling CryptoSwift SecureBytes.swift
+[546/608] Compiling CryptoSwift Signature.swift
+[547/608] Compiling CryptoSwift StreamDecryptor.swift
+[548/608] Compiling CryptoSwift GCM.swift
+[549/608] Compiling CryptoSwift OCB.swift
+[550/608] Compiling CryptoSwift OFB.swift
+[551/608] Compiling CryptoSwift PCBC.swift
+[552/608] Compiling CryptoSwift Blowfish.swift
+[553/608] Compiling CryptoSwift CBCMAC.swift
+[554/608] Compiling CryptoSwift CMAC.swift
+[555/608] Compiling CryptoSwift Addition.swift
+[556/608] Compiling CryptoSwift BigInt.swift
+[557/608] Compiling CryptoSwift BigUInt.swift
+[558/608] Compiling CryptoSwift BitwiseOps.swift
+[559/608] Compiling CryptoSwift CS.swift
+[568/608] Compiling CoreTextExt CTFontCollectionOptionKey.swift
+[569/608] Compiling CoreTextExt CTFontManager.swift
+[570/608] Compiling CoreTextExt CTFrameAttributeKey.swift
+[571/608] Compiling CoreTextExt CTFramesetter.swift
+[572/608] Compiling CryptoSwift StreamEncryptor.swift
+[573/608] Compiling CryptoSwift String+Extension.swift
+[574/608] Compiling CryptoSwift UInt128.swift
+[575/608] Compiling CryptoSwift UInt16+Extension.swift
+[576/608] Compiling CryptoSwift UInt32+Extension.swift
+[577/608] Compiling CryptoSwift UInt64+Extension.swift
+[578/608] Compiling CryptoSwift UInt8+Extension.swift
+[579/608] Compiling CryptoSwift Updatable.swift
+[580/608] Compiling CryptoSwift Utils.swift
+[581/608] Compiling CryptoSwift XChaCha20.swift
+[582/608] Compiling CryptoSwift ZeroPadding.swift
+[582/608] Linking FrameworkToolboxMacros-tool
+[582/608] Linking FoundationToolboxMacros-tool
+[584/608] Linking SwiftStdlibToolboxMacros-tool
+[586/611] Emitting module FrameworkToolbox
+[587/611] Compiling FrameworkToolbox FrameworkToolbox.swift
+[588/611] Compiling FrameworkToolbox AccessLevel.swift
+[589/635] Compiling SwiftStdlibToolbox Sequence+.swift
+[590/635] Compiling SwiftStdlibToolbox AccessLevel.swift
+[591/635] Compiling SwiftStdlibToolbox WeakBox.swift
+[592/635] Compiling SwiftStdlibToolbox AsyncExtensions.swift
+[593/635] Compiling SwiftStdlibToolbox BitPattern.swift
+[594/635] Compiling SwiftStdlibToolbox Collection+.swift
+[595/635] Compiling SwiftStdlibToolbox AddAsyncMacros.swift
+[596/635] Compiling SwiftStdlibToolbox AssociatedValueMacro.swift
+[597/637] Compiling SwiftStdlibToolbox AvailableMacro.swift
+[598/637] Compiling SwiftStdlibToolbox CaseCheckableMacro.swift
+[599/637] Compiling SwiftStdlibToolbox Comparable+.swift
+[600/637] Compiling SwiftStdlibToolbox FrameworkToolboxCompatible+Stdlib.swift
+[601/637] Compiling SwiftStdlibToolbox KeyPath+.swift
+[602/637] Compiling SwiftStdlibToolbox ArrayBuilder.swift
+[603/637] Compiling SwiftStdlibToolbox ComparableBuildable.swift
+[604/637] Compiling SwiftStdlibToolbox DictionaryBuilder.swift
+[605/637] Compiling SwiftStdlibToolbox Number+.swift
+[606/637] Compiling SwiftStdlibToolbox OptionalProtocol.swift
+[607/637] Compiling SwiftStdlibToolbox Pointers+.swift
+[608/637] Compiling SwiftStdlibToolbox DyldInterposeMacro.swift
+[609/637] Compiling SwiftStdlibToolbox Equatable.swift
+[610/637] Compiling SwiftStdlibToolbox MutexMacro.swift
+[611/637] Compiling SwiftStdlibToolbox Mutex.swift
+[612/637] Emitting module SwiftStdlibToolbox
+[615/637] Compiling CoreTextExt CTRubyAnnotation.swift
+[616/638] Compiling SwiftStdlibToolbox RangeRepresentable.swift
+[617/638] Compiling SwiftStdlibToolbox StringBuilder.swift
+[620/638] Emitting module CoreTextExt
+[631/662] Compiling CoreTextExt CTRun.swift
+[632/662] Compiling FoundationToolbox Foundation+.swift
+[633/662] Compiling FoundationToolbox NSCFString+.swift
+[634/662] Compiling FoundationToolbox NSObject+.swift
+[635/664] Compiling FoundationToolbox Lock.swift
+[636/664] Compiling FoundationToolbox Loggable.swift
+[637/664] Compiling FoundationToolbox OSAllocatedUnfairLock+UnsafeModify.swift
+[638/664] Compiling FoundationToolbox SecureCodingCodable.swift
+[639/664] Compiling FoundationToolbox URL+.swift
+[640/664] Compiling FoundationToolbox AccessLevel.swift
+[641/664] Compiling FoundationToolbox KeychainAccessibility.swift
+[642/664] Compiling FoundationToolbox Barrier.swift
+[643/664] Compiling FoundationToolbox Exported.swift
+[644/664] Compiling FoundationToolbox Bundle+.swift
+[645/664] Compiling FoundationToolbox SelectorMacro.swift
+[646/664] Compiling FoundationToolbox URLMacro.swift
+[647/664] Compiling FoundationToolbox LoggableMacro.swift
+[648/664] Compiling FoundationToolbox OSAllocatedUnfairLockMacro.swift
+[649/664] Compiling FoundationToolbox KeychainError.swift
+[650/664] Compiling FoundationToolbox KeychainStorable.swift
+[651/664] Compiling FoundationToolbox KeychainStorage.swift
+[652/664] Emitting module FoundationToolbox
+[653/664] Compiling FoundationToolbox KeychainMacro.swift
+[654/664] Compiling FoundationToolbox LogMacro.swift
+[655/664] Compiling FoundationToolbox NSRange+.swift
+[656/664] Compiling FoundationToolbox NSSortDescriptor+.swift
+[657/664] Compiling FoundationToolbox String+.swift
+[660/671] Compiling LyricsCore RegexPattern.swift
+[661/671] Compiling LyricsCore LyricsMetadata.swift
+[662/671] Compiling LyricsCore LyricsLineAttachment.swift
+[663/671] Compiling LyricsCore LyricsLine.swift
+[664/671] Compiling LyricsCore Lyrics+Furigana.swift
+[665/671] Compiling LyricsCore Lyrics.swift
+[666/671] Emitting module LyricsCore
+[667/708] Compiling LyricsService QQResponseSongDetail.swift
+[668/708] Compiling LyricsService Endpoint.swift
+[669/708] Compiling LyricsService HTTPClient.swift
+[670/708] Compiling LyricsService NetworkPerformer.swift
+[671/712] Compiling LyricsService LyricsSearchRequest.swift
+[672/712] Compiling LyricsService LyricsService.swift
+[673/712] Compiling LyricsService KugouKrcHeaderFieldLanguage.swift
+[674/712] Compiling LyricsService KugouResponseSearchResult.swift
+[675/712] Compiling LyricsService KugouKrcDecrypter.swift
+[676/712] Compiling LyricsService KugouKrcParser.swift
+[677/712] Compiling LyricsService NetEaseKLyricParser.swift
+[678/712] Compiling LyricsService QQMusicKanaParser.swift
+[679/712] Compiling LyricsService NetEaseResponseSearchResult.swift
+[680/712] Compiling LyricsService NetEaseResponseSingleLyrics.swift
+[681/712] Compiling LyricsService QQResponseSearchResult.swift
+[682/712] Compiling LyricsService QQResponseSingleLyrics.swift
+[683/712] Compiling LyricsService KugouResponseSingleLyrics.swift
+[684/712] Compiling LyricsService LRCLIBResponse.swift
+[685/712] Compiling LyricsService MusixmatchResponseSearchResult.swift
+[686/712] Compiling LyricsService MusixmatchResponseSingleLyrics.swift
+[687/712] Compiling LyricsService Kugou.swift
+[688/712] Compiling LyricsService LRCLIB.swift
+[689/712] Compiling LyricsService Musixmatch.swift
+[690/712] Compiling LyricsService NetEase.swift
+[691/712] Compiling LyricsService NetEaseEapiClient.swift
+[692/712] Compiling LyricsService QQMusic.swift
+[693/712] Compiling LyricsService QQMusicXMLDecoder.swift
+[694/712] Compiling LyricsService Lyrics+Merge.swift
+[695/712] Compiling LyricsService Lyrics+Quality.swift
+[696/712] Compiling LyricsService LyricsMetadata+Extension.swift
+[697/712] Compiling LyricsService RegexPattern.swift
+[698/712] Compiling LyricsService String+XMLDecode.swift
+[699/712] Emitting module LyricsService
+[700/712] Compiling LyricsService LyricsProvider.swift
+[701/712] Compiling LyricsService LyricsProviderError.swift
+[702/712] Compiling LyricsService LyricsSearchRequestPlugin.swift
+[703/712] Compiling LyricsService Service.swift
+[704/712] Compiling LyricsService QQMusicQrcDecrypter.swift
+[705/712] Compiling LyricsService QQMusicQrcParser.swift
+[706/712] Compiling LyricsService Group.swift
+[707/712] Compiling LyricsService Lyrics+Metadata.swift
+[708/715] Compiling LyricsServiceUI LyricsSourceIconDrawing.swift
+[709/715] Emitting module LyricsServiceUI
+[710/715] Compiling LyricsServiceUI LyricsSourceIconDrawing+Image.swift
+[711/717] Compiling LyricsKit LyricsKit.swift
+[712/717] Emitting module LyricsKit
+[713/745] Compiling LyricShiori LocalLyricsStorage.swift
+[714/745] Compiling LyricShiori LyricsBridgeTrace.swift
+[715/745] Compiling LyricShiori LyricsKitLyricsService.swift
+[716/748] Compiling LyricShiori QQMusicTranslationRecovery.swift
+[717/748] Compiling LyricShiori ServiceProtocols.swift
+[718/748] Compiling LyricShiori SharedLyricsCache.swift
+[719/748] Compiling LyricShiori StatusMenuView.swift
+[720/748] Compiling LyricShiori WordVerticalTextRenderer.swift
+[721/748] Compiling LyricShiori resource_bundle_accessor.swift
+[722/748] Compiling LyricShiori SpotifyPlayerService.swift
+[723/748] Compiling LyricShiori DesktopLyricsView.swift
+[724/748] Compiling LyricShiori DesktopLyricsWindowController.swift
+[725/748] Compiling LyricShiori WindowActivator.swift
+[726/748] Compiling LyricShiori ChineseConversionService.swift
+[727/748] Compiling LyricShiori GitHubUpdateService.swift
+[728/748] Compiling LyricShiori MainWindowView.swift
+[729/748] Compiling LyricShiori SearchLyricsView.swift
+[730/748] Compiling LyricShiori SettingsView.swift
+[731/748] Compiling LyricShiori MenuBarController.swift
+[732/748] Compiling LyricShiori PanelController.swift
+[733/748] Compiling LyricShiori SearchLyricsWindowController.swift
+[734/748] Compiling LyricShiori LyricsModels.swift
+[735/748] Compiling LyricShiori LyricsParser.swift
+[736/748] Compiling LyricShiori LyricsTimingNormalizer.swift
+[737/748] Compiling LyricShiori LyricsCandidateMatcher.swift
+[738/748] Compiling LyricShiori LyricsContentNormalizer.swift
+[739/748] Compiling LyricShiori LyricsFilter.swift
+[740/748] Compiling LyricShiori AppSettings.swift
+[741/748] Compiling LyricShiori LyricShioriApp.swift
+[742/748] Compiling LyricShiori LyricShioriStore.swift
+[743/748] Emitting module LyricShiori
+[743/748] Write Objects.LinkFileList
+[744/748] Linking LyricShiori
+[745/750] Applying LyricShiori
+[747/750] Compiling LyricShioriTests LyricsSafetyTests.swift
+[748/750] Emitting module LyricShioriTests
+[749/752] Compiling LyricShioriPackageTests runner.swift
+[750/752] Emitting module LyricShioriPackageTests
+[750/752] Write Objects.LinkFileList
+[751/752] Linking LyricShioriPackageTests
+Build complete! (44.33s)
+Test Suite 'All tests' started at 2026-09-06 21:42:29.622.
+Test Suite 'LyricShioriPackageTests.xctest' started at 2026-09-06 21:42:29.624.
+Test Suite 'LyricsSafetyTests' started at 2026-09-06 21:42:29.624.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testAppLanguagePreferencePersists]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testAppLanguagePreferencePersists]' passed (0.007 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testChineseConversionAndCandidateMatchingAreSimplifiedTraditionalCompatible]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testChineseConversionAndCandidateMatchingAreSimplifiedTraditionalCompatible]' passed (0.012 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testConnectedPluginSkipsOnlyAppAutomaticLocalLyrics]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testConnectedPluginSkipsOnlyAppAutomaticLocalLyrics]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testCorruptSharedCacheIsQuarantinedAndRecovered]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testCorruptSharedCacheIsQuarantinedAndRecovered]' passed (0.002 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testDesktopLyricsHideOnHoverAlsoEnablesClickThrough]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testDesktopLyricsHideOnHoverAlsoEnablesClickThrough]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testDesktopLyricsVisibilityFollowsSpotifyFrontmostPreference]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testDesktopLyricsVisibilityFollowsSpotifyFrontmostPreference]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLocalLyricsPreserveAutomaticAndPluginSources]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLocalLyricsPreserveAutomaticAndPluginSources]' passed (0.018 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLocalLyricsTrustTrackIdentityAfterMetadataChanges]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLocalLyricsTrustTrackIdentityAfterMetadataChanges]' passed (0.003 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLocalLyricsUseLRCSAndTrackIdentityInFilename]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLocalLyricsUseLRCSAndTrackIdentityInFilename]' passed (0.002 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsAcquisitionLabelsDistinguishPluginAppSearchAndManualSelection]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsAcquisitionLabelsDistinguishPluginAppSearchAndManualSelection]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsChineseConversionOnlyConvertsOppositeChineseScript]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsChineseConversionOnlyConvertsOppositeChineseScript]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsDocumentReportsWordTimingAvailability]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsDocumentReportsWordTimingAvailability]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsKitInlineTagsProduceTextAndDurations]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsKitInlineTagsProduceTextAndDurations]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsLanguageRecognitionDistinguishesChineseScriptsAndJapanese]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsLanguageRecognitionDistinguishesChineseScriptsAndJapanese]' passed (0.002 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testManualCacheEntryCannotBeOverwrittenByPluginResult]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testManualCacheEntryCannotBeOverwrittenByPluginResult]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testManualResetIsExposedToPluginAsTombstone]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testManualResetIsExposedToPluginAsTombstone]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testManualSearchKeepsWeaklyRelatedProviderResult]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testManualSearchKeepsWeaklyRelatedProviderResult]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testMenuBarLyricsTickerCentersTextWithoutNegativeCroppingOrigin]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testMenuBarLyricsTickerCentersTextWithoutNegativeCroppingOrigin]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testMenuBarPopoverDismissesOnlyForOutsideClicks]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testMenuBarPopoverDismissesOnlyForOutsideClicks]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testMissingSharedCacheReadDoesNotReplaceCacheFile]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testMissingSharedCacheReadDoesNotReplaceCacheFile]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testPluginResultReplacesLowerPriorityAppSearchCache]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testPluginResultReplacesLowerPriorityAppSearchCache]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testQQMusicLyricsApplyProviderTimingCorrectionWithoutChangingManualOffset]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testQQMusicLyricsApplyProviderTimingCorrectionWithoutChangingManualOffset]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testRejectedSharedCacheEntriesDoNotReplaceCacheFile]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testRejectedSharedCacheEntriesDoNotReplaceCacheFile]' passed (0.002 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testRemovingLocalLyricsReturnsTrackToUnselectedState]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testRemovingLocalLyricsReturnsTrackToUnselectedState]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testRemovingManualCacheEntriesPreservesPluginFallback]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testRemovingManualCacheEntriesPreservesPluginFallback]' passed (0.003 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testSearchDraftPrefillsLatePlaybackAndResetsForEachOpening]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testSearchDraftPrefillsLatePlaybackAndResetsForEachOpening]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testSpotifyFrontmostVisibilityPreferencePersists]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testSpotifyFrontmostVisibilityPreferencePersists]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testSystemAppLanguageSupportsKnownLanguagesAndFallsBackToEnglish]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testSystemAppLanguageSupportsKnownLanguagesAndFallsBackToEnglish]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testTimingNormalizerLeavesPlausibleTimelineUntouched]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testTimingNormalizerLeavesPlausibleTimelineUntouched]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testTimingNormalizerRepairsQQCentisecondsExposedAsSeconds]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testTimingNormalizerRepairsQQCentisecondsExposedAsSeconds]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testUpdateVersionComparisonAcceptsTagsAndUnevenComponents]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testUpdateVersionComparisonAcceptsTagsAndUnevenComponents]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testWordVerticalTypesetterUsesEastAsianGlyphFormsAndSidewaysWesternRuns]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testWordVerticalTypesetterUsesEastAsianGlyphFormsAndSidewaysWesternRuns]' passed (0.021 seconds).
+Test Suite 'LyricsSafetyTests' passed at 2026-09-06 21:42:29.707.
+	 Executed 32 tests, with 0 failures (0 unexpected) in 0.081 (0.082) seconds
+Test Suite 'LyricShioriPackagwarning: '--build-system native' has been deprecated and will be removed in a future release; please report an issue at https://github.com/swiftlang/swift-package-manager/issues if you are unable to adopt the default build system.
+eTests.xctest' passed at 2026-09-06 21:42:29.707.
+	 Executed 32 tests, with 0 failures (0 unexpected) in 0.081 (0.082) seconds
+Test Suite 'All tests' passed at 2026-09-06 21:42:29.707.
+	 Executed 32 tests, with 0 failures (0 unexpected) in 0.081 (0.085) seconds
+◇ Test run started.
+↳ Testing Library Version: 2077
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

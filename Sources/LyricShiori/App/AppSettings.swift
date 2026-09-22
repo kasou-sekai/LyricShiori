@@ -362,7 +362,7 @@ enum DesktopLyricsVerticalDirection: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-enum DesktopLyricsColorPreset: String, CaseIterable, Identifiable {
+enum DesktopLyricsColorPreset: String, CaseIterable, Identifiable, Sendable {
     /// Samples the album art and selects the closest readable preset.
     case automatic = "Automatic"
     case aurora = "Aurora"

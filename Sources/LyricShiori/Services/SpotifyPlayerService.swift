@@ -34,7 +34,7 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
     }
 
     func seek(to time: TimeInterval) async throws {
-        _ = try runSpotifyCommand("set player position to \(max(0, time))")
+        _ = try runSpotifyCommand("set player position to \(LyricsResourceLimits.safeSeconds(time))")
     }
 
     func writeLyrics(_ content: String, to track: TrackIdentity) async throws {
@@ -112,13 +112,13 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
 
         let status: PlaybackStatus = lines[0] == "playing" ? .playing : .paused
         let duration = TimeInterval(Double(lines[5]) ?? 0) / 1000
-        let elapsed = TimeInterval(Double(lines[6]) ?? 0)
+        let elapsed = LyricsResourceLimits.safeSeconds(Double(lines[6]) ?? 0)
         let track = TrackIdentity(
             id: lines[1],
             title: lines[2],
             artist: lines[3],
             album: lines[4].isEmpty ? nil : lines[4],
-            duration: duration > 0 ? duration : nil,
+            duration: duration.isFinite && duration > 0 ? LyricsResourceLimits.safeSeconds(duration) : nil,
             albumArtworkURL: lines.indices.contains(7) && !lines[7].isEmpty ? lines[7] : nil,
             localFileURL: nil,
             embeddedLyrics: nil

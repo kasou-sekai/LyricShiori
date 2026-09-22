@@ -42,8 +42,24 @@ struct WordVerticalLyricText: NSViewRepresentable {
 @MainActor
 final class WordVerticalLyricTextView: NSView {
     private var configuration: Configuration?
+    private var units: [WordVerticalTypesetter.LayoutUnit] = []
+    private var frames: [FrameKey: CTFrame] = [:]
+    private var frameWidth: CGFloat = 0
+    private(set) var layoutBuildCount = 0
+    private(set) var frameBuildCount = 0
+
+    private struct FrameKey: Hashable {
+        var unit: Int
+        var color: NSColor
+    }
 
     override var isOpaque: Bool { false }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        frames.removeAll(keepingCapacity: true)
+        needsDisplay = true
+    }
 
     func configure(
         line: DesktopLyricsDisplayLine,
@@ -55,6 +71,19 @@ final class WordVerticalLyricTextView: NSView {
         fontSize: Double,
         alignment: DesktopLyricsAlignment
     ) {
+        let layoutChanged = configuration.map {
+            $0.line.text != line.text || $0.line.wordTimings != line.wordTimings
+                || $0.line.lineStart != line.lineStart || $0.line.lineEnd != line.lineEnd
+                || $0.line.isActive != line.isActive || $0.fontSize != fontSize
+        } ?? true
+        if layoutChanged {
+            units = WordVerticalTypesetter.layoutUnits(for: line, fontSize: fontSize)
+            layoutBuildCount += 1
+        }
+        if layoutChanged || configuration?.pendingColor != pendingColor
+            || configuration?.playedColor != playedColor || configuration?.secondaryColor != secondaryColor {
+            frames.removeAll(keepingCapacity: true)
+        }
         configuration = Configuration(
             line: line,
             playbackTime: playbackTime,
@@ -77,10 +106,10 @@ final class WordVerticalLyricTextView: NSView {
             return
         }
 
-        let units = WordVerticalTypesetter.layoutUnits(
-            for: configuration.line,
-            fontSize: configuration.fontSize
-        )
+        if frameWidth != bounds.width {
+            frames.removeAll(keepingCapacity: true)
+            frameWidth = bounds.width
+        }
         let contentHeight = max(1, units.reduce(0) { $0 + $1.advance })
         let overflow = max(0, contentHeight - bounds.height)
         let contentBottom: CGFloat
@@ -102,10 +131,11 @@ final class WordVerticalLyricTextView: NSView {
         context.textMatrix = .identity
         context.clip(to: bounds)
         var offsetFromTop: CGFloat = 0
-        for unit in units {
+        for (index, unit) in units.enumerated() {
             let unitBottom = contentBottom + contentHeight - offsetFromTop - unit.advance
             draw(
                 unit,
+                index: index,
                 bottom: unitBottom,
                 configuration: configuration,
                 context: context
@@ -117,6 +147,7 @@ final class WordVerticalLyricTextView: NSView {
 
     private func draw(
         _ unit: WordVerticalTypesetter.LayoutUnit,
+        index: Int,
         bottom: CGFloat,
         configuration: Configuration,
         context: CGContext
@@ -142,6 +173,7 @@ final class WordVerticalLyricTextView: NSView {
             context.translateBy(x: -center.x, y: -center.y)
             draw(
                 unit.attributedText,
+                index: index,
                 color: configuration.pendingColor,
                 alpha: 1,
                 in: rect,
@@ -150,6 +182,7 @@ final class WordVerticalLyricTextView: NSView {
             )
             draw(
                 unit.attributedText,
+                index: index,
                 color: configuration.playedColor,
                 alpha: CGFloat(progress),
                 in: rect,
@@ -159,6 +192,7 @@ final class WordVerticalLyricTextView: NSView {
         } else {
             draw(
                 unit.attributedText,
+                index: index,
                 color: configuration.line.isActive
                     ? configuration.playedColor
                     : configuration.secondaryColor,
@@ -173,29 +207,33 @@ final class WordVerticalLyricTextView: NSView {
 
     private func draw(
         _ attributedText: NSAttributedString,
+        index: Int,
         color: NSColor,
         alpha: CGFloat,
         in rect: CGRect,
         configuration: Configuration,
         context: CGContext
     ) {
-        let coloredText = NSMutableAttributedString(attributedString: attributedText)
-        coloredText.addAttribute(
-            .foregroundColor,
-            value: color,
-            range: NSRange(location: 0, length: coloredText.length)
-        )
-        let framesetter = CTFramesetterCreateWithAttributedString(coloredText)
-        let frame = CTFramesetterCreateFrame(
-            framesetter,
-            CFRange(location: 0, length: 0),
-            CGPath(rect: rect, transform: nil),
-            [
-                kCTFrameProgressionAttributeName: NSNumber(value: CTFrameProgression.rightToLeft.rawValue),
-            ] as CFDictionary
-        )
+        guard alpha > 0 else { return }
+        let key = FrameKey(unit: index, color: color)
+        let frame: CTFrame
+        if let cached = frames[key] {
+            frame = cached
+        } else {
+            let coloredText = NSMutableAttributedString(attributedString: attributedText)
+            coloredText.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: coloredText.length))
+            let framesetter = CTFramesetterCreateWithAttributedString(coloredText)
+            frame = CTFramesetterCreateFrame(
+                framesetter, CFRange(location: 0, length: 0),
+                CGPath(rect: CGRect(origin: .zero, size: rect.size), transform: nil),
+                [kCTFrameProgressionAttributeName: NSNumber(value: CTFrameProgression.rightToLeft.rawValue)] as CFDictionary
+            )
+            frames[key] = frame
+            frameBuildCount += 1
+        }
 
         context.saveGState()
+        context.translateBy(x: rect.minX, y: rect.minY)
         context.setAlpha(alpha)
         context.setShadow(
             offset: CGSize(width: 0, height: -configuration.fontSize * 0.025),

@@ -123,7 +123,7 @@ private struct VerticalDesktopLyricColumn: View {
     @State private var wallClockAnchor = Date()
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !line.isPlaying)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !line.isPlaying || !line.isActive)) { context in
             let playbackTime = livePlaybackTime(at: context.date)
             WordVerticalLyricText(
                 line: line,
@@ -163,7 +163,7 @@ private struct VerticalDesktopLyricColumn: View {
     )
 
     private func livePlaybackTime(at date: Date) -> TimeInterval {
-        guard line.isPlaying else { return line.playbackTime }
+        guard line.isPlaying, line.isActive else { return line.playbackTime }
         return playbackAnchor + date.timeIntervalSince(wallClockAnchor)
     }
 

@@ -36,7 +36,11 @@ struct LyricsCacheFile: Codable {
     var desktopLyricsColors: DesktopLyricsColors?
     var lines: [Line]
 
-    init(document: LyricsDocument, track: TrackIdentity?) {
+    init(document: LyricsDocument, track: TrackIdentity?) throws {
+        try LyricsResourceLimits.validate(document)
+        guard track?.duration.map({ LyricsResourceLimits.validMilliseconds($0 * 1_000) }) != false else {
+            throw LyricsParserError.invalidLyrics
+        }
         format = Self.formatIdentifier
         version = Self.currentVersion
         self.track = track.map {
@@ -70,16 +74,20 @@ struct LyricsCacheFile: Codable {
     }
 
     static func encodedString(document: LyricsDocument, track: TrackIdentity?) -> String {
+        (try? encode(document: document, track: track)) ?? "{}"
+    }
+
+    static func encode(document: LyricsDocument, track: TrackIdentity?) throws -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(Self(document: document, track: track)),
-              let string = String(data: data, encoding: .utf8) else {
-            return "{}"
-        }
+        let data = try encoder.encode(Self(document: document, track: track))
+        guard data.count <= LyricsResourceLimits.maximumFileBytes,
+              let string = String(data: data, encoding: .utf8) else { throw LyricsParserError.invalidLyrics }
         return string
     }
 
     static func decode(_ content: String, sourceName: String?, localURL: URL?, track: TrackIdentity?) throws -> LyricsDocument {
+        guard content.utf8.count <= LyricsResourceLimits.maximumFileBytes else { throw LyricsParserError.invalidLyrics }
         let decoder = JSONDecoder()
         let file = try decoder.decode(Self.self, from: Data(content.utf8))
         guard file.format == formatIdentifier, file.version == currentVersion else {
@@ -89,6 +97,20 @@ struct LyricsCacheFile: Codable {
             throw LyricsParserError.invalidLyrics
         }
 
+        guard file.lines.count <= 5_000,
+              LyricsResourceLimits.validMilliseconds(Double(file.offsetMilliseconds)),
+              file.lines.allSatisfy({ line in
+                  LyricsResourceLimits.validMilliseconds(Double(line.startMilliseconds))
+                      && line.text.utf8.count <= 16_384
+                      && line.translations.count <= 64
+                      && line.translations.allSatisfy { $0.key.utf8.count <= 256 && $0.value.utf8.count <= 16_384 }
+                      && line.words.count <= 2_000
+                      && line.words.allSatisfy {
+                          LyricsResourceLimits.validMilliseconds(Double($0.startMilliseconds))
+                              && $0.durationMilliseconds.map { LyricsResourceLimits.validMilliseconds(Double($0)) } != false
+                              && $0.text.utf8.count <= 16_384
+                      }
+              }) else { throw LyricsParserError.invalidLyrics }
         let metadataTrack = file.track
         let lines = file.lines.map { line in
             LyricsLine(
@@ -127,7 +149,8 @@ struct LyricsCacheFile: Codable {
     }
 }
 
-struct LocalLyricsStorage: LyricsStorageService {
+struct LocalLyricsStorage: LyricsStorageService, Sendable {
+    private static let documentCache = LocalLyricsDocumentCache()
     var baseDirectory: URL
     var isSecurityScoped: Bool
 
@@ -165,7 +188,10 @@ struct LocalLyricsStorage: LyricsStorageService {
         let accessed = beginSecurityScopeIfNeeded()
         defer { endSecurityScopeIfNeeded(accessed) }
 
-        for url in candidateURLs(for: track) where FileManager.default.fileExists(atPath: url.path) {
+        let canonical = baseDirectory.appendingPathComponent(fileName(for: track)).appendingPathExtension("lrcs")
+        if FileManager.default.fileExists(atPath: canonical.path),
+           let document = try loadDocument(at: canonical, for: track) { return document }
+        for url in candidateURLs(for: track).dropFirst() where FileManager.default.fileExists(atPath: url.path) {
             if let document = try loadDocument(at: url, for: track) {
                 return document
             }
@@ -174,13 +200,13 @@ struct LocalLyricsStorage: LyricsStorageService {
     }
 
     private func loadDocument(at url: URL, for track: TrackIdentity) throws -> LyricsDocument? {
-        let content = try String(contentsOf: url, encoding: .utf8)
-        if let decoded = try? LyricsCacheFile.decode(content, sourceName: LyricsProviderID.local.rawValue, localURL: url, track: track) {
+        try Self.documentCache.load(url: url, track: track) {
+            let content = try LyricsResourceLimits.readText(at: url)
+            guard let decoded = try? LyricsCacheFile.decode(content, sourceName: LyricsProviderID.local.rawValue, localURL: url, track: track) else { return nil }
             let document = LyricsContentNormalizer.removingLeadingMetadata(from: decoded, track: track)
             LyricsBridgeTrace.record(event: "local.lrcs.loaded", document: document, track: track, detail: url.lastPathComponent)
             return document
         }
-        return nil
     }
 
     func save(_ document: LyricsDocument, for track: TrackIdentity) throws -> URL {
@@ -192,7 +218,7 @@ struct LocalLyricsStorage: LyricsStorageService {
             .appendingPathComponent(fileName(for: track))
             .appendingPathExtension("lrcs")
         let normalized = LyricsContentNormalizer.removingLeadingMetadata(from: document, track: track)
-        let content = LyricsCacheFile.encodedString(document: normalized, track: track)
+        let content = try LyricsCacheFile.encode(document: normalized, track: track)
         try content.write(to: url, atomically: true, encoding: .utf8)
         LyricsBridgeTrace.record(event: "local.lrcs.saved", document: normalized, track: track, detail: url.lastPathComponent)
         return url
@@ -211,14 +237,14 @@ struct LocalLyricsStorage: LyricsStorageService {
     }
 
     func importLyrics(from url: URL) throws -> LyricsDocument {
-        let content = try String(contentsOf: url, encoding: .utf8)
+        let content = try LyricsResourceLimits.readText(at: url)
         var document = try LyricsCacheFile.decode(content, sourceName: LyricsProviderID.local.rawValue, localURL: url, track: nil)
         document.needsPersist = true
         return document
     }
 
     func export(_ document: LyricsDocument, to url: URL) throws {
-        try LyricsCacheFile.encodedString(document: document, track: nil).write(to: url, atomically: true, encoding: .utf8)
+        try LyricsCacheFile.encode(document: document, track: nil).write(to: url, atomically: true, encoding: .utf8)
     }
 
     private func sanitize(_ value: String) -> String {
@@ -253,5 +279,41 @@ struct LocalLyricsStorage: LyricsStorageService {
     private func endSecurityScopeIfNeeded(_ accessed: Bool) {
         guard accessed else { return }
         baseDirectory.stopAccessingSecurityScopedResource()
+    }
+}
+
+/// File identity and dates invalidate both atomic replacements and in-place edits.
+/// The lock coalesces simultaneous bridge requests for the same file.
+private final class LocalLyricsDocumentCache: @unchecked Sendable {
+    private struct Key: Hashable { var url: URL; var track: TrackIdentity }
+    private struct Stamp: Equatable {
+        var size: UInt64
+        var modified: Date?
+        var created: Date?
+        var inode: UInt64
+        init(_ attributes: [FileAttributeKey: Any]) {
+            size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
+            modified = attributes[.modificationDate] as? Date
+            created = attributes[.creationDate] as? Date
+            inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
+        }
+    }
+    private let lock = NSLock()
+    private var entries: [Key: (Stamp, LyricsDocument)] = [:]
+
+    func load(url: URL, track: TrackIdentity, read: () throws -> LyricsDocument?) throws -> LyricsDocument? {
+        try lock.withLock {
+            let key = Key(url: url, track: track)
+            let stamp = Stamp(try FileManager.default.attributesOfItem(atPath: url.path))
+            if let cached = entries[key], cached.0 == stamp { return cached.1 }
+            entries[key] = nil
+            guard let document = try read() else { return nil }
+            // Avoid caching a read across an external write.
+            if stamp == Stamp(try FileManager.default.attributesOfItem(atPath: url.path)) {
+                if entries.count >= 4 { entries.removeAll(keepingCapacity: true) }
+                entries[key] = (stamp, document)
+            }
+            return document
+        }
     }
 }

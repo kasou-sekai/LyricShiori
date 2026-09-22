@@ -348,9 +348,18 @@ private final class MenuBarLyricsTickerView: NSView {
         NSGraphicsContext.restoreGraphicsState()
     }
 
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateAnimationTimer()
+    }
+
     private func updateAnimationTimer() {
-        stopAnimating()
-        guard window != nil, lyric.isPlaying else { return }
+        let width = (lyric.text as NSString).size(withAttributes: [
+            .font: NSFont.systemFont(ofSize: MenuBarLyricsTickerLayout.fontSize),
+        ]).width + 8
+        guard window != nil, lyric.isPlaying, width > bounds.width,
+              timedScrollPhase(at: Date()) < 1 else { stopAnimating(); return }
+        guard animationTimer == nil else { return }
 
         let timer = Timer(
             timeInterval: 1.0 / 60.0,
@@ -370,6 +379,7 @@ private final class MenuBarLyricsTickerView: NSView {
 
     @objc private func animationTimerDidFire(_ timer: Timer) {
         needsDisplay = true
+        if timedScrollPhase(at: Date()) >= 1 { stopAnimating() }
     }
 
     private func timedScrollPhase(at date: Date) -> CGFloat {

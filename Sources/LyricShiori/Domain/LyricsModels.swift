@@ -28,7 +28,7 @@ struct TrackIdentity: Identifiable, Equatable, Codable, Hashable, Sendable {
             artist,
             album ?? "",
             albumArtworkURL ?? "",
-            duration.map { String(Int($0.rounded())) } ?? "",
+            duration.map { String(Int(LyricsResourceLimits.safeSeconds($0).rounded())) } ?? "",
         ]
         .joined(separator: "\u{1f}")
     }
@@ -61,7 +61,7 @@ struct PlaybackSnapshot: Equatable, Sendable {
     }
 }
 
-struct LyricsDocument: Identifiable, Equatable {
+struct LyricsDocument: Identifiable, Equatable, Sendable {
     private static let qqMusicTimingCorrection: TimeInterval = 0.2
 
     var id = UUID()
@@ -109,7 +109,7 @@ struct LyricsDocument: Identifiable, Equatable {
     }
 
     static func formatTimestamp(_ time: TimeInterval) -> String {
-        let total = max(0, time)
+        let total = LyricsResourceLimits.safeSeconds(time)
         let minutes = Int(total / 60)
         let seconds = Int(total.truncatingRemainder(dividingBy: 60))
         let centiseconds = Int((total - floor(total)) * 100)
@@ -118,7 +118,7 @@ struct LyricsDocument: Identifiable, Equatable {
 
 }
 
-struct DesktopLyricsColors: Codable, Equatable {
+struct DesktopLyricsColors: Codable, Equatable, Sendable {
     /// The selected setting, for example `Automatic`, `Aurora`, or `Custom`.
     var preset: String?
     /// RGBA hex values are platform-neutral so the shared lyrics bridge can return them too.
@@ -127,7 +127,7 @@ struct DesktopLyricsColors: Codable, Equatable {
     var outlineColor: String
 }
 
-struct LyricsSelectionState: Equatable, Codable {
+struct LyricsSelectionState: Equatable, Codable, Sendable {
     var isManualSelection: Bool
     var origin: LyricsSelectionOrigin
     var cachedWithoutPlugin: Bool
@@ -194,7 +194,7 @@ struct LyricsSelectionState: Equatable, Codable {
     }
 }
 
-enum LyricsSelectionOrigin: String, Codable, Equatable {
+enum LyricsSelectionOrigin: String, Codable, Equatable, Sendable {
     case plugin
     case automaticSearch = "automatic-search"
     case manualSelection = "manual-selection"
@@ -203,13 +203,13 @@ enum LyricsSelectionOrigin: String, Codable, Equatable {
     case unknown
 }
 
-enum LyricsCacheSource: String, Codable, Equatable {
+enum LyricsCacheSource: String, Codable, Equatable, Sendable {
     case withoutPlugin = "without-plugin"
     case plugin
     case manual
 }
 
-struct LyricsMetadata: Equatable, Codable {
+struct LyricsMetadata: Equatable, Codable, Sendable {
     var title: String?
     var artist: String?
     var album: String?
@@ -218,7 +218,7 @@ struct LyricsMetadata: Equatable, Codable {
     var request: ShioriLyricsSearchRequest?
 }
 
-struct LyricsLine: Identifiable, Equatable, Codable {
+struct LyricsLine: Identifiable, Equatable, Codable, Sendable {
     var id = UUID()
     var position: TimeInterval
     var content: String
@@ -226,14 +226,14 @@ struct LyricsLine: Identifiable, Equatable, Codable {
     var wordTimings: [WordTiming]
 }
 
-struct WordTiming: Identifiable, Equatable, Codable {
+struct WordTiming: Identifiable, Equatable, Codable, Sendable {
     var id = UUID()
     var start: TimeInterval
     var duration: TimeInterval?
     var text: String
 }
 
-struct ShioriLyricsSearchRequest: Equatable, Codable, Hashable {
+struct ShioriLyricsSearchRequest: Equatable, Codable, Hashable, Sendable {
     var title: String
     var artist: String
     var album: String?

@@ -20,6 +20,7 @@ struct LyricsParser {
     private static let anyInlineTagPattern = #"<[^>]+>"#
 
     func parse(_ content: String, sourceName: String? = nil, localURL: URL? = nil) throws -> LyricsDocument {
+        guard content.utf8.count <= LyricsResourceLimits.maximumFileBytes else { throw LyricsParserError.invalidLyrics }
         var metadata = LyricsMetadata(title: nil, artist: nil, album: nil, languageCode: nil, translationLanguages: [], request: nil)
         var offset = 0
         var selectionState: LyricsSelectionState?
@@ -79,6 +80,7 @@ struct LyricsParser {
         if let selectionState {
             document.selectionState = selectionState
         }
+        try LyricsResourceLimits.validate(document)
         document.metadata.languageCode = LyricsLanguageRecognizer.recognize(in: document.lines.map(\.content).joined(separator: "\n"))
         return LyricsContentNormalizer.removingLeadingMetadata(from: document)
     }

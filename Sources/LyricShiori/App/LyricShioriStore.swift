@@ -106,6 +106,7 @@ final class LyricShioriStore {
     private var pluginConnectionTask: Task<Void, Never>?
     private var lyricClockTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
+    private var importTask: Task<Void, Never>?
     private var activeSearchID = UUID()
     private var automaticSearchID: UUID?
     private var playbackRefreshRevision = 0
@@ -185,6 +186,8 @@ final class LyricShioriStore {
         pluginConnectionTask?.cancel()
         lyricClockTask?.cancel()
         searchTask?.cancel()
+        importTask?.cancel()
+        artworkPresetTasks.values.forEach { $0.cancel() }
         sharedLyricsCacheServer.stop()
         desktopLyricsWindowController?.hide()
         if let spotifyPlaybackObserver {
@@ -288,6 +291,8 @@ final class LyricShioriStore {
     }
 
     func currentTrackChanged() async {
+        importTask?.cancel()
+        for (url, task) in artworkPresetTasks where url != playback.track?.albumArtworkURL { task.cancel() }
         persistIfNeeded()
         currentLyrics = nil
         currentLineIndex = nil
@@ -526,7 +531,7 @@ final class LyricShioriStore {
                     .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current),
                 conversion.convert(result.artist, mode: .simplified)
                     .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current),
-                String(Int((result.duration ?? 0).rounded())),
+                String(Int(LyricsResourceLimits.safeSeconds(result.duration ?? 0).rounded())),
                 sample,
             ].joined(separator: "\u{1e}")
             return seen.insert(key).inserted
@@ -544,6 +549,9 @@ final class LyricShioriStore {
     }
 
     func acceptLyrics(_ document: LyricsDocument, sourceName: String? = nil, isManualSelection: Bool = true) {
+        if isManualSelection { importTask?.cancel() }
+        do { try LyricsResourceLimits.validate(document) }
+        catch { lastError = error.localizedDescription; return }
         let track = playback.track
         var copy = settings.filter.apply(to: LyricsContentNormalizer.removingLeadingMetadata(from: document, track: track))
         copy.metadata.title = copy.metadata.title?.isEmpty == false ? copy.metadata.title : track?.title
@@ -565,10 +573,22 @@ final class LyricShioriStore {
     }
 
     func importLyrics(from url: URL) {
-        do {
-            acceptLyrics(try localLyricsStorage().importLyrics(from: url), sourceName: LyricsProviderID.local.rawValue)
-        } catch {
-            lastError = error.localizedDescription
+        importTask?.cancel()
+        let storage = localLyricsStorage()
+        let trackID = playback.track?.id
+        importTask = Task { [weak self] in
+            do {
+                let document = try await Task.detached(priority: .userInitiated) {
+                    let accessed = url.startAccessingSecurityScopedResource()
+                    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                    return try storage.importLyrics(from: url)
+                }.value
+                guard !Task.isCancelled, let self, self.playback.track?.id == trackID else { return }
+                self.acceptLyrics(document, sourceName: LyricsProviderID.local.rawValue)
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.lastError = error.localizedDescription
+            }
         }
     }
 
@@ -599,15 +619,14 @@ final class LyricShioriStore {
     }
 
     func adjustOffset(by delta: Int) {
-        currentLyrics?.offsetMilliseconds += delta
-        currentLyrics?.selectionState = .manual(origin: .manualSelection)
-        currentLyrics?.needsPersist = true
-        persistIfNeeded()
-        updateCurrentLine()
-        syncDesktopLyricsWindow()
+        guard let current = currentLyrics?.offsetMilliseconds else { return }
+        let next = current.addingReportingOverflow(delta)
+        guard !next.overflow else { return }
+        setOffset(next.partialValue)
     }
 
     func setOffset(_ offset: Int) {
+        guard LyricsResourceLimits.validMilliseconds(Double(offset)) else { return }
         currentLyrics?.offsetMilliseconds = offset
         currentLyrics?.selectionState = .manual(origin: .manualSelection)
         currentLyrics?.needsPersist = true
@@ -904,26 +923,39 @@ final class LyricShioriStore {
     }
 
     private func detectArtworkPreset(for artworkURL: String) {
-        guard artworkPresetTasks[artworkURL] == nil,
-              let url = URL(string: artworkURL) else { return }
+        guard artworkPresetTasks[artworkURL] == nil, artworkPresetTasks.count < 4,
+              let url = URL(string: artworkURL), url.scheme == "https" else { return }
 
         artworkPresetTasks[artworkURL] = Task { [weak self] in
             defer { self?.artworkPresetTasks[artworkURL] = nil }
             guard let self else { return }
             do {
-                let (data, response) = try await URLSession.shared.data(from: url)
+                let (download, response) = try await URLSession.shared.download(from: url)
+                defer { try? FileManager.default.removeItem(at: download) }
                 guard let httpResponse = response as? HTTPURLResponse,
                       (200..<300).contains(httpResponse.statusCode),
                       !Task.isCancelled else { return }
-                self.artworkPresetCache[artworkURL] = Self.closestPreset(to: data)
+                let preset = await Task.detached(priority: .utility) {
+                    guard let size = try? download.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                          size <= LyricsResourceLimits.maximumFileBytes,
+                          let data = try? Data(contentsOf: download) else { return DesktopLyricsColorPreset.aurora }
+                    return Self.closestPreset(to: data)
+                }.value
+                guard !Task.isCancelled else { return }
+                if self.artworkPresetCache.count >= 64 { self.artworkPresetCache.removeAll(keepingCapacity: true) }
+                self.artworkPresetCache[artworkURL] = preset
             } catch {
                 // Keep the readable Aurora fallback when Spotify's artwork is unavailable.
             }
         }
     }
 
-    private static func closestPreset(to artworkData: Data) -> DesktopLyricsColorPreset {
+    nonisolated private static func closestPreset(to artworkData: Data) -> DesktopLyricsColorPreset {
         guard let source = CGImageSourceCreateWithData(artworkData as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Double,
+              let height = properties[kCGImagePropertyPixelHeight] as? Double,
+              width > 0, height > 0, width * height <= 40_000_000,
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
               let profile = dominantColourProfile(in: image) else {
             return .aurora
@@ -940,7 +972,7 @@ final class LyricShioriStore {
         return candidates.min { circularHueDistance(profile.hue, $0.1) < circularHueDistance(profile.hue, $1.1) }?.0 ?? .aurora
     }
 
-    private static func dominantColourProfile(in image: CGImage) -> (hue: Double, saturation: Double)? {
+    nonisolated private static func dominantColourProfile(in image: CGImage) -> (hue: Double, saturation: Double)? {
         let side = 32
         let bytesPerPixel = 4
         var pixels = [UInt8](repeating: 0, count: side * side * bytesPerPixel)
@@ -992,7 +1024,7 @@ final class LyricShioriStore {
         return (hue, weightedSaturation / weightTotal)
     }
 
-    private static func circularHueDistance(_ lhs: Double, _ rhs: Double) -> Double {
+    nonisolated private static func circularHueDistance(_ lhs: Double, _ rhs: Double) -> Double {
         min(abs(lhs - rhs), 1 - abs(lhs - rhs))
     }
 

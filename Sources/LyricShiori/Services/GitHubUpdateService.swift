@@ -164,6 +164,48 @@ final class GitHubUpdateService {
         return stableVersion.split(separator: ".").compactMap { Int($0) }
     }
 
+    // Shared by normal and administrator installs. Stage on the destination
+    // filesystem so neither a failed copy nor a cross-volume move removes the old app.
+    nonisolated static let replacementScript = #"""
+    #!/bin/bash
+    set -euo pipefail
+    source_app="$1"
+    destination="$2"
+    parent="$(/usr/bin/dirname "$destination")"
+    transaction="$(/usr/bin/mktemp -d "$parent/.LyricShiori-install.XXXXXX")"
+    backup="$transaction/previous.app"
+    staged="$transaction/LyricShiori.app"
+    moved_old=0
+    installed=0
+    cleanup() {
+      result=$?
+      if [[ "$installed" == 0 && "$moved_old" == 1 ]]; then
+        if [[ -e "$destination" || -L "$destination" ]]; then
+          echo "Previous application retained at $backup" >&2
+          exit 1
+        fi
+        if ! /bin/mv "$backup" "$destination"; then
+          # Keep the backup if rollback itself fails; never erase the last good copy.
+          echo "Previous application retained at $backup" >&2
+          exit 1
+        fi
+      fi
+      /bin/rm -rf "$transaction"
+      exit "$result"
+    }
+    trap cleanup EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM HUP
+    /usr/bin/ditto "$source_app" "$staged"
+    /usr/bin/codesign --verify --deep --strict "$staged"
+    if [[ -e "$destination" || -L "$destination" ]]; then
+      /bin/mv "$destination" "$backup"
+      moved_old=1
+    fi
+    /bin/mv "$staged" "$destination"
+    installed=1
+    """#
+
     private static let installerScript = #"""
     #!/bin/bash
     set -uo pipefail
@@ -197,15 +239,19 @@ final class GitHubUpdateService {
     /usr/bin/codesign --verify --deep --strict "$app_path" || fail
 
     destination="/Applications/LyricShiori.app"
-    if [[ -w "/Applications" ]] || [[ -w "$destination" ]]; then
-      /bin/rm -rf "$destination" || fail
-      /usr/bin/ditto "$app_path" "$destination" || fail
+    replacement_script="$work_dir/replace.sh"
+    /bin/cat > "$replacement_script" <<'REPLACEMENT'
+    \#(replacementScript)
+    REPLACEMENT
+    if [[ -w "/Applications" ]]; then
+      /bin/bash "$replacement_script" "$app_path" "$destination" || fail
     else
-      /usr/bin/osascript - "$app_path" "$destination" <<'APPLESCRIPT' || fail
+      /usr/bin/osascript - "$replacement_script" "$app_path" "$destination" <<'APPLESCRIPT' || fail
     on run argv
-      set sourcePath to item 1 of argv
-      set destinationPath to item 2 of argv
-      do shell script "/bin/rm -rf " & quoted form of destinationPath & " && /usr/bin/ditto " & quoted form of sourcePath & " " & quoted form of destinationPath with administrator privileges
+      set helperPath to item 1 of argv
+      set sourcePath to item 2 of argv
+      set destinationPath to item 3 of argv
+      do shell script "/bin/bash " & quoted form of helperPath & " " & quoted form of sourcePath & " " & quoted form of destinationPath with administrator privileges
     end run
     APPLESCRIPT
     fi

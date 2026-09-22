@@ -1,0 +1,13 @@
+[0/1] Planning build
+Building for production...
+[0/6] Write sources
+[1/6] Write swift-version--525A05E66D8C668B.txt
+[3/4] Compiling LyricShiori AppSettings.swift
+[3/5] Write Objects.LinkFileList
+[4/5] Linking LyricShiori
+Build complete! (18.41s)
+warning: '--build-system native' has been deprecated and will be removed in a future release; please report an issue at https://github.com/swiftlang/swift-package-manager/issues if you are unable to adopt the default build system.
+warning: '--build-system native' has been deprecated and will be removed in a future release; please report an issue at https://github.com/swiftlang/swift-package-manager/issues if you are unable to adopt the default build system.
+/Volumes/Data/Codes/XCode/LyricShiori/dist/LyricShiori.app: replacing existing signature
+/Volumes/Data/Codes/XCode/LyricShiori/dist/LyricShiori.app
+Linked against macOS SDK 27.0

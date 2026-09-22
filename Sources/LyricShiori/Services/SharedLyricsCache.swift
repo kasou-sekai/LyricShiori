@@ -491,7 +491,7 @@ final class SharedLyricsCache: @unchecked Sendable {
         if kindScore != 0 { return kindScore }
         let lineScore = lhs.lines.count - rhs.lines.count
         if lineScore != 0 { return lineScore }
-        return Int(lhs.cachedAt - rhs.cachedAt)
+        return lhs.cachedAt == rhs.cachedAt ? 0 : (lhs.cachedAt > rhs.cachedAt ? 1 : -1)
     }
 
     private func bestLocalPersistenceEntry<S: Sequence>(from entries: S) -> Entry? where S.Element == Entry {
@@ -668,7 +668,11 @@ final class SharedLyricsCache: @unchecked Sendable {
             memoryStore = store
             return store
         }
-        let data = try Data(contentsOf: url)
+        let file = try FileHandle(forReadingFrom: url)
+        defer { try? file.close() }
+        let maximumCacheBytes = 96 * 1_024 * 1_024
+        let data = try file.read(upToCount: maximumCacheBytes + 1) ?? Data()
+        guard data.count <= maximumCacheBytes else { throw LyricsParserError.invalidLyrics }
         let store: Store
         do {
             store = try decoder.decode(Store.self, from: data)
@@ -686,8 +690,10 @@ final class SharedLyricsCache: @unchecked Sendable {
             memoryStore = empty
             return empty
         }
-        memoryStore = store
-        return store
+        var validated = store
+        validated.entries = store.entries.filter { isValid($0.value) }
+        memoryStore = validated
+        return validated
     }
 
     private func persist(_ store: Store) throws {
@@ -730,11 +736,14 @@ final class SharedLyricsCache: @unchecked Sendable {
     }
 
     private func isValid(_ entry: Entry) -> Bool {
-        guard isSpotifyTrack(entry.trackUri),
+        let lifetime = entry.expiresAt.subtractingReportingOverflow(entry.cachedAt)
+        guard !lifetime.overflow, entry.cachedAt >= 0,
+              isSpotifyTrack(entry.trackUri),
               entry.trackUri.utf8.count <= 256,
               entry.lines.count <= 5_000,
+              entry.offsetMilliseconds.map({ LyricsResourceLimits.validMilliseconds(Double($0)) }) != false,
               entry.expiresAt > entry.cachedAt,
-              entry.expiresAt - entry.cachedAt <= 31 * 24 * 60 * 60 * 1_000 else {
+              lifetime.partialValue <= 31 * 24 * 60 * 60 * 1_000 else {
             return false
         }
         return entry.lines.allSatisfy { line in
@@ -743,6 +752,13 @@ final class SharedLyricsCache: @unchecked Sendable {
                 && (line.romanization?.utf8.count ?? 0) <= 16_384
                 && (line.furigana?.utf8.count ?? 0) <= 16_384
                 && (line.words?.count ?? 0) <= 2_000
+                && line.time.map(LyricsResourceLimits.validMilliseconds) != false
+                && line.duration.map(LyricsResourceLimits.validMilliseconds) != false
+                && (line.words ?? []).allSatisfy {
+                    LyricsResourceLimits.validMilliseconds($0.time)
+                        && LyricsResourceLimits.validMilliseconds($0.duration)
+                        && $0.text.utf8.count <= 16_384
+                }
         }
     }
 }
@@ -767,7 +783,16 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     private let cache: SharedLyricsCache
     private let localStorage: LocalLyricsStorage
     private var listener: NWListener?
-    private let port: NWEndpoint.Port = 24887
+    private let port: NWEndpoint.Port
+    private var readyPort: NWEndpoint.Port?
+    private let connectionTimeout: TimeInterval
+    private var connections: [ObjectIdentifier: NWConnection] = [:]
+    private var receiveCount = 0
+    private let maximumConnections = 32
+
+    var listeningPort: NWEndpoint.Port? { stateLock.withLock { readyPort } }
+    var activeConnectionCount: Int { stateLock.withLock { connections.count } }
+    var receiveCallbackCount: Int { stateLock.withLock { receiveCount } }
     private let sessionToken = UUID().uuidString
     private let stateLock = NSLock()
     private var shouldRun = false
@@ -780,9 +805,11 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     ]
     var onEntrySaved: ((SharedLyricsCache.Entry) -> Void)?
 
-    init(cache: SharedLyricsCache, localStorage: LocalLyricsStorage = LocalLyricsStorage()) {
+    init(cache: SharedLyricsCache, localStorage: LocalLyricsStorage = LocalLyricsStorage(), port: NWEndpoint.Port = 24887, connectionTimeout: TimeInterval = 5) {
         self.cache = cache
         self.localStorage = localStorage
+        self.port = port
+        self.connectionTimeout = connectionTimeout
     }
 
     func start() {
@@ -803,8 +830,15 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
                 self?.handle(connection)
             }
             listener.stateUpdateHandler = { [weak self, weak listener] state in
-                guard case .failed = state, let listener else { return }
-                self?.listenerFailed(listener)
+                guard let self, let listener else { return }
+                switch state {
+                case .ready:
+                    self.stateLock.withLock {
+                        if self.listener === listener { self.readyPort = listener.port }
+                    }
+                case .failed: self.listenerFailed(listener)
+                default: break
+                }
             }
             let installed = stateLock.withLock { () -> Bool in
                 guard shouldRun, self.listener == nil else { return false }
@@ -822,21 +856,26 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     }
 
     func stop() {
-        let listener = stateLock.withLock { () -> NWListener? in
+        let stopped = stateLock.withLock { () -> (NWListener?, [NWConnection]) in
             shouldRun = false
             let current = self.listener
             self.listener = nil
+            readyPort = nil
             activeLeases.removeAll()
             activeClients.removeAll()
-            return current
+            let pending = Array(connections.values)
+            connections.removeAll()
+            return (current, pending)
         }
-        listener?.cancel()
+        stopped.0?.cancel()
+        stopped.1.forEach { $0.cancel() }
     }
 
     private func listenerFailed(_ failedListener: NWListener) {
         let shouldRetry = stateLock.withLock { () -> Bool in
             guard listener === failedListener else { return false }
             listener = nil
+            readyPort = nil
             return shouldRun
         }
         failedListener.cancel()
@@ -870,30 +909,58 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         }
     }
 
+    private func finish(_ connection: NWConnection) {
+        let removed = stateLock.withLock { connections.removeValue(forKey: ObjectIdentifier(connection)) != nil }
+        if removed { connection.cancel() }
+    }
+
+    private func isReceiving(_ connection: NWConnection) -> Bool {
+        stateLock.withLock { shouldRun && connections[ObjectIdentifier(connection)] != nil }
+    }
+
     private func handle(_ connection: NWConnection) {
+        let accepted = stateLock.withLock {
+            guard shouldRun, connections.count < maximumConnections else { return false }
+            connections[ObjectIdentifier(connection)] = connection
+            return true
+        }
+        guard accepted else { connection.cancel(); return }
+        connection.stateUpdateHandler = { [weak self, weak connection] state in
+            guard let connection else { return }
+            switch state {
+            case .failed, .cancelled: self?.finish(connection)
+            default: break
+            }
+        }
         connection.start(queue: .global(qos: .utility))
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5) {
-            connection.cancel()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + connectionTimeout) { [weak self, weak connection] in
+            if let connection { self?.finish(connection) }
         }
         receive(on: connection, buffer: Data())
     }
 
     private func receive(on connection: NWConnection, buffer: Data) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 2_000_000) { [weak self] data, _, isComplete, _ in
-            guard let self else {
-                connection.cancel()
+        guard isReceiving(connection) else { return }
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) { [weak self] data, _, isComplete, error in
+            guard let self else { connection.cancel(); return }
+            self.stateLock.withLock { self.receiveCount += 1 }
+            // Cancellation and receive failures are terminal, even without EOF.
+            guard error == nil, self.isReceiving(connection) else {
+                self.finish(connection)
                 return
             }
             var nextBuffer = buffer
-            if let data {
-                nextBuffer.append(data)
-            }
-            if nextBuffer.count > self.maximumHeaderBytes + self.maximumBodyBytes {
+            if let data { nextBuffer.append(data) }
+            if nextBuffer.count > self.maximumHeaderBytes + self.maximumBodyBytes
+                || (nextBuffer.range(of: Data("\r\n\r\n".utf8)) == nil
+                    && nextBuffer.count > self.maximumHeaderBytes) {
                 self.send(self.httpResponse(status: "413 Payload Too Large"), on: connection)
                 return
             }
-            if self.isCompleteRequest(nextBuffer) || isComplete {
+            if self.isCompleteRequest(nextBuffer) {
                 self.respond(to: nextBuffer, on: connection)
+            } else if isComplete {
+                self.finish(connection)
             } else {
                 self.receive(on: connection, buffer: nextBuffer)
             }
@@ -924,14 +991,13 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         } catch {
             response = httpResponse(status: "500 Internal Server Error", body: Data(describe(error).utf8))
         }
-        connection.send(content: response, completion: .contentProcessed { _ in
-            connection.cancel()
-        })
+        send(response, on: connection)
     }
 
     private func send(_ response: Data, on connection: NWConnection) {
-        connection.send(content: response, completion: .contentProcessed { _ in
-            connection.cancel()
+        guard isReceiving(connection) else { return }
+        connection.send(content: response, completion: .contentProcessed { [weak self] _ in
+            self?.finish(connection)
         })
     }
 

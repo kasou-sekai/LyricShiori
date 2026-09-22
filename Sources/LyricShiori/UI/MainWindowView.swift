@@ -51,6 +51,7 @@ struct HeaderBar: View {
     }
 
     private func timeText(_ time: TimeInterval) -> String {
+        let time = LyricsResourceLimits.safeSeconds(time)
         let minutes = Int(time / 60)
         let seconds = Int(time.truncatingRemainder(dividingBy: 60))
         return String(format: "%02d:%02d", minutes, seconds)

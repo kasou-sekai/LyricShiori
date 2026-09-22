@@ -1,0 +1,119 @@
+warning: '--skip-update' option is deprecated and will be removed in a future release
+warning: 'bigint': /Volumes/Data/Codes/XCode/LyricShiori/.build/sdk27/checkouts/BigInt/Package.swift:18:19: warning: 'v4' is deprecated: watchOS 9.0 is the oldest supported version [#DeprecatedDeclaration]
+16 |         .iOS(.v12),
+17 |         .tvOS(.v12),
+18 |         .watchOS(.v4),
+   |                   `- warning: 'v4' is deprecated: watchOS 9.0 is the oldest supported version [#DeprecatedDeclaration]
+19 |         .macCatalyst(.v13),
+20 |         .visionOS(.v1),
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[0/1] Planning build
+Building for debugging...
+[0/8] Write sources
+[1/8] Write swift-version--525A05E66D8C668B.txt
+[3/8] Compiling LyricShiori LyricShioriStore.swift
+[4/8] Emitting module LyricShiori
+[5/8] Compiling LyricShiori DesktopLyricsWindowController.swift
+[5/10] Write Objects.LinkFileList
+[6/10] Linking LyricShiori
+[7/11] Applying LyricShiori
+[9/11] Emitting module LyricShioriTests
+[9/11] Write Objects.LinkFileList
+[10/11] Linking LyricShioriPackageTests
+Build complete! (15.78s)
+Test Suite 'All tests' started at 2026-09-06 22:06:44.722.
+Test Suite 'LyricShioriPackageTests.xctest' started at 2026-09-06 22:06:44.723.
+Test Suite 'LyricsSafetyTests' started at 2026-09-06 22:06:44.723.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testAppLanguagePreferencePersists]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testAppLanguagePreferencePersists]' passed (0.003 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testChineseConversionAndCandidateMatchingAreSimplifiedTraditionalCompatible]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testChineseConversionAndCandidateMatchingAreSimplifiedTraditionalCompatible]' passed (0.007 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testConnectedPluginSkipsOnlyAppAutomaticLocalLyrics]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testConnectedPluginSkipsOnlyAppAutomaticLocalLyrics]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testCorruptSharedCacheIsQuarantinedAndRecovered]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testCorruptSharedCacheIsQuarantinedAndRecovered]' passed (0.002 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testDesktopLyricsHideOnHoverAlsoEnablesClickThrough]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testDesktopLyricsHideOnHoverAlsoEnablesClickThrough]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testDesktopLyricsVisibilityFollowsSpotifyFrontmostPreference]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testDesktopLyricsVisibilityFollowsSpotifyFrontmostPreference]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLocalLyricsPreserveAutomaticAndPluginSources]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLocalLyricsPreserveAutomaticAndPluginSources]' passed (0.006 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLocalLyricsTrustTrackIdentityAfterMetadataChanges]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLocalLyricsTrustTrackIdentityAfterMetadataChanges]' passed (0.002 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLocalLyricsUseLRCSAndTrackIdentityInFilename]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLocalLyricsUseLRCSAndTrackIdentityInFilename]' passed (0.002 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsAcquisitionLabelsDistinguishPluginAppSearchAndManualSelection]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsAcquisitionLabelsDistinguishPluginAppSearchAndManualSelection]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsChineseConversionOnlyConvertsOppositeChineseScript]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsChineseConversionOnlyConvertsOppositeChineseScript]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsDocumentReportsWordTimingAvailability]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsDocumentReportsWordTimingAvailability]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsKitInlineTagsProduceTextAndDurations]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsKitInlineTagsProduceTextAndDurations]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsLanguageRecognitionDistinguishesChineseScriptsAndJapanese]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testLyricsLanguageRecognitionDistinguishesChineseScriptsAndJapanese]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testManualCacheEntryCannotBeOverwrittenByPluginResult]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testManualCacheEntryCannotBeOverwrittenByPluginResult]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testManualResetIsExposedToPluginAsTombstone]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testManualResetIsExposedToPluginAsTombstone]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testManualSearchKeepsWeaklyRelatedProviderResult]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testManualSearchKeepsWeaklyRelatedProviderResult]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testMenuBarLyricsTickerCentersTextWithoutNegativeCroppingOrigin]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testMenuBarLyricsTickerCentersTextWithoutNegativeCroppingOrigin]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testMenuBarPopoverDismissesOnlyForOutsideClicks]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testMenuBarPopoverDismissesOnlyForOutsideClicks]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testMissingSharedCacheReadDoesNotReplaceCacheFile]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testMissingSharedCacheReadDoesNotReplaceCacheFile]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testPluginResultReplacesLowerPriorityAppSearchCache]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testPluginResultReplacesLowerPriorityAppSearchCache]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testQQMusicLyricsApplyProviderTimingCorrectionWithoutChangingManualOffset]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testQQMusicLyricsApplyProviderTimingCorrectionWithoutChangingManualOffset]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testRejectedSharedCacheEntriesDoNotReplaceCacheFile]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testRejectedSharedCacheEntriesDoNotReplaceCacheFile]' passed (0.002 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testRemovingLocalLyricsReturnsTrackToUnselectedState]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testRemovingLocalLyricsReturnsTrackToUnselectedState]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testRemovingManualCacheEntriesPreservesPluginFallback]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testRemovingManualCacheEntriesPreservesPluginFallback]' passed (0.002 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testSearchDraftPrefillsLatePlaybackAndResetsForEachOpening]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testSearchDraftPrefillsLatePlaybackAndResetsForEachOpening]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testSpotifyFrontmostVisibilityPreferencePersists]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testSpotifyFrontmostVisibilityPreferencePersists]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testSystemAppLanguageSupportsKnownLanguagesAndFallsBackToEnglish]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testSystemAppLanguageSupportsKnownLanguagesAndFallsBackToEnglish]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testTimingNormalizerLeavesPlausibleTimelineUntouched]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testTimingNormalizerLeavesPlausibleTimelineUntouched]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testTimingNormalizerRepairsQQCentisecondsExposedAsSeconds]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testTimingNormalizerRepairsQQCentisecondsExposedAsSeconds]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testUpdateVersionComparisonAcceptsTagsAndUnevenComponents]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testUpdateVersionComparisonAcceptsTagsAndUnevenComponents]' passed (0.000 seconds).
+Test Case '-[LyricShioriTests.LyricsSafetyTests testWordVerticalTypesetterUsesEastAsianGlyphFormsAndSidewaysWesternRuns]' started.
+Test Case '-[LyricShioriTests.LyricsSafetyTests testWordVerticalTypesetterUsesEastAsianGlyphFormsAndSidewaysWesternRuns]' passed (0.007 seconds).
+Test Suite 'LyricsSafetyTests' passed at 2026-09-06 22:06:44.765.
+	 Executed 32 tests, with 0 failures (0 unexpected) in 0.041 (0.043) seconds
+Test Suite 'PerformanceRegreswarning: '--build-system native' has been deprecated and will be removed in a future release; please report an issue at https://github.com/swiftlang/swift-package-manager/issues if you are unable to adopt the default build system.
+sionTests' started at 2026-09-06 22:06:44.765.
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testBridgeServesFragmentedRequestAndBoundsConcurrentConnections]' started.
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testBridgeServesFragmentedRequestAndBoundsConcurrentConnections]' passed (0.175 seconds).
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testBridgeTerminalConnectionsStopReceiving]' started.
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testBridgeTerminalConnectionsStopReceiving]' passed (1.808 seconds).
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testCacheRejectsOverflowAndInvalidTimingsWithoutTrapping]' started.
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testCacheRejectsOverflowAndInvalidTimingsWithoutTrapping]' passed (0.002 seconds).
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testInstallerStagesBeforeReplacingAndRollsBackFailedSwap]' started.
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testInstallerStagesBeforeReplacingAndRollsBackFailedSwap]' passed (0.342 seconds).
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testLocalCacheInvalidatesOnReplacementAndDeletion]' started.
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testLocalCacheInvalidatesOnReplacementAndDeletion]' passed (0.006 seconds).
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testLocalImportRejectsOversizedAndExtremeData]' started.
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testLocalImportRejectsOversizedAndExtremeData]' passed (0.001 seconds).
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testVerticalRendererPreservesPixelsAndReusesFrames]' started.
+Test Case '-[LyricShioriTests.PerformanceRegressionTests testVerticalRendererPreservesPixelsAndReusesFrames]' passed (0.221 seconds).
+Test Suite 'PerformanceRegressionTests' passed at 2026-09-06 22:06:47.321.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 2.555 (2.555) seconds
+Test Suite 'LyricShioriPackageTests.xctest' passed at 2026-09-06 22:06:47.321.
+	 Executed 39 tests, with 0 failures (0 unexpected) in 2.596 (2.598) seconds
+Test Suite 'All tests' passed at 2026-09-06 22:06:47.321.
+	 Executed 39 tests, with 0 failures (0 unexpected) in 2.596 (2.599) seconds
+◇ Test run started.
+↳ Testing Library Version: 2077
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

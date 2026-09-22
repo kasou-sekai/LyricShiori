@@ -22,7 +22,8 @@ final class DesktopLyricsWindowController {
     private let membershipRepairer = DesktopLyricsSpaceMembershipRepairer()
     private let panel: DesktopLyricsPanel
     private let hostingController: NSHostingController<DesktopLyricsView>
-    private var pointerTrackingTask: Task<Void, Never>?
+    private var localPointerMonitor: Any?
+    private var globalPointerMonitor: Any?
     private var spaceRepairTask: Task<Void, Never>?
     private var activeSpaceObserver: NSObjectProtocol?
     private var shouldBeVisible = false
@@ -37,6 +38,7 @@ final class DesktopLyricsWindowController {
             defer: false
         )
         panel.contentViewController = hostingController
+        panel.acceptsMouseMovedEvents = true
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.isOpaque = false
@@ -58,6 +60,7 @@ final class DesktopLyricsWindowController {
     }
 
     isolated deinit {
+        stopPointerTracking()
         if let activeSpaceObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(activeSpaceObserver)
         }
@@ -136,18 +139,22 @@ final class DesktopLyricsWindowController {
             return
         }
         refreshPointerState()
-        guard pointerTrackingTask == nil else { return }
-        pointerTrackingTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                self?.refreshPointerState()
-                try? await Task.sleep(for: .milliseconds(16))
-            }
+        guard localPointerMonitor == nil, globalPointerMonitor == nil else { return }
+        let events: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        localPointerMonitor = NSEvent.addLocalMonitorForEvents(matching: events) { [weak self] event in
+            MainActor.assumeIsolated { self?.refreshPointerState() }
+            return event
+        }
+        globalPointerMonitor = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.refreshPointerState() }
         }
     }
 
     private func stopPointerTracking() {
-        pointerTrackingTask?.cancel()
-        pointerTrackingTask = nil
+        if let localPointerMonitor { NSEvent.removeMonitor(localPointerMonitor) }
+        if let globalPointerMonitor { NSEvent.removeMonitor(globalPointerMonitor) }
+        localPointerMonitor = nil
+        globalPointerMonitor = nil
     }
 
     private func refreshPointerState() {
@@ -240,10 +247,11 @@ private final class DesktopLyricsSkyLightSymbols: @unchecked Sendable {
 
     private init?() {
         let path = "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight"
-        guard let handle = dlopen(path, RTLD_LAZY | RTLD_LOCAL),
-              let defaultConnectionSymbol = dlsym(handle, "_CGSDefaultConnection"),
+        guard let handle = dlopen(path, RTLD_LAZY | RTLD_LOCAL) else { return nil }
+        guard let defaultConnectionSymbol = dlsym(handle, "_CGSDefaultConnection"),
               let managedSpacesSymbol = dlsym(handle, "CGSCopyManagedDisplaySpaces"),
               let addWindowsSymbol = dlsym(handle, "CGSAddWindowsToSpaces") else {
+            dlclose(handle)
             return nil
         }
 
