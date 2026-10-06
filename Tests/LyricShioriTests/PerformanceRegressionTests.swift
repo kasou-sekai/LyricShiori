@@ -111,13 +111,159 @@ final class PerformanceRegressionTests: XCTestCase {
     }
 
     @MainActor
-    private func render(_ view: NSView) throws -> Data {
-        let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 160, pixelsHigh: 720, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 640, bitsPerPixel: 32))
-        bitmap.size = NSSize(width: 80, height: 360)
+    func testVerticalPartialRedrawMatchesFullFramesThroughPlaybackAndSeeking() throws {
+        let optimized = WordVerticalLyricTextView()
+        let original = ReferenceVerticalLyricTextView()
+        let text = "春の歌 ABC、春。星空に響く歌聲"
+        var line = DesktopLyricsDisplayLine(id: "partial", lineID: UUID(), text: text,
+            wordTimings: [.init(start: 1, duration: 8, text: text)], lineStart: 1, lineEnd: 10,
+            playbackTime: 1, isPlaying: true, isActive: true, distanceFromActive: 0, progress: 0)
+        for height in [1_000.0, 180.0] {
+            for alignment in [DesktopLyricsAlignment.left, .center, .right] {
+                for view in [optimized, original] { view.frame = NSRect(x: 0, y: 0, width: 80, height: height) }
+                let bitmap = try makeBitmap(for: optimized)
+                var first = true
+                let times = [-1.0] + (0..<120).map { 1 + Double($0) / 60 } + [5.9, 9.5, 11, 2.4, 1.05]
+                for time in times {
+                    optimized.configure(line: line, playbackTime: time, pendingColor: .gray, playedColor: .cyan,
+                        secondaryColor: .white, shadowColor: .black, fontSize: 24, alignment: alignment)
+                    original.configure(line: line, playbackTime: time, pendingColor: .gray, playedColor: .cyan,
+                        secondaryColor: .white, shadowColor: .black, fontSize: 24, alignment: alignment)
+                    let dirty = first ? optimized.bounds : optimized.lastInvalidatedRect
+                    if !dirty.isEmpty { _ = try render(optimized, into: bitmap, dirtyRect: dirty) }
+                    first = false
+                    let expected = try render(original)
+                    let actual = Data(bytes: try XCTUnwrap(bitmap.bitmapData), count: bitmap.bytesPerRow * bitmap.pixelsHigh)
+                    XCTAssertTrue(actual == expected, "Partial repaint changed pixels: height=\(height), alignment=\(alignment), time=\(time)")
+                }
+                // Promotion changes font weight and shadow; invalidate even if
+                // the playback time itself has not changed.
+                line.isActive = false
+                optimized.configure(line: line, playbackTime: 1.05, pendingColor: .gray, playedColor: .cyan,
+                    secondaryColor: .white, shadowColor: .black, fontSize: 24, alignment: alignment)
+                original.configure(line: line, playbackTime: 1.05, pendingColor: .gray, playedColor: .cyan,
+                    secondaryColor: .white, shadowColor: .black, fontSize: 24, alignment: alignment)
+                XCTAssertEqual(optimized.lastInvalidatedRect, optimized.bounds)
+                XCTAssertTrue(try render(optimized, into: bitmap, dirtyRect: optimized.lastInvalidatedRect) == render(original))
+                line.isActive = true
+            }
+        }
+    }
+
+    @MainActor
+    func testVerticalRendererSkipsStaticFramesAndRepaintsFewerWords() throws {
+        let view = WordVerticalLyricTextView(frame: NSRect(x: 0, y: 0, width: 80, height: 1_000))
+        let text = "春の歌が星空に響いて遠い街まで届く"
+        var line = DesktopLyricsDisplayLine(id: "static", lineID: UUID(), text: text,
+            wordTimings: [.init(start: 1, duration: 10, text: text)], lineStart: 1, lineEnd: 12,
+            playbackTime: 1, isPlaying: true, isActive: true, distanceFromActive: 0, progress: 0)
+        func configure(_ time: Double, shadow: NSColor = .black) {
+            view.configure(line: line, playbackTime: time, pendingColor: .gray, playedColor: .cyan,
+                secondaryColor: .white, shadowColor: shadow, fontSize: 24, alignment: .center)
+        }
+        configure(-1)
+        _ = try render(view)
+        view.needsDisplay = false
+        configure(0)
+        XCTAssertTrue(view.lastInvalidatedRect.isEmpty, "No word or scroll position changed")
+        configure(1.1)
+        XCTAssertFalse(view.lastInvalidatedRect.isEmpty)
+        let fullCount = view.unitDrawCount
+        let bitmap = try makeBitmap(for: view)
+        _ = try render(view, into: bitmap, dirtyRect: view.lastInvalidatedRect)
+        XCTAssertLessThan(view.unitDrawCount - fullCount, fullCount, "Animation should not redraw the entire column")
+        view.needsDisplay = false
+        configure(1.1)
+        XCTAssertTrue(view.lastInvalidatedRect.isEmpty)
+        configure(1.1, shadow: .red)
+        XCTAssertEqual(view.lastInvalidatedRect, view.bounds)
+        configure(15)
+        view.needsDisplay = false
+        configure(16)
+        XCTAssertTrue(view.lastInvalidatedRect.isEmpty, "Completed karaoke should remain static")
+        line.isActive = false
+        configure(2)
+        view.needsDisplay = false
+        configure(3)
+        XCTAssertTrue(view.lastInvalidatedRect.isEmpty, "Upcoming columns have no per-word animation")
+    }
+
+    func testReusableAppleScriptRetainsCompiledStateAndSerializesExecutions() async throws {
+        let script = ReusableAppleScript(source: """
+        property invocationCount : 0
+        set invocationCount to invocationCount + 1
+        return invocationCount as string
+        """)
+        let started = Date()
+        let values = try await withThrowingTaskGroup(of: ReusableAppleScript.Result.self) { group in
+            for _ in 0..<12 { group.addTask { try await script.execute() } }
+            var values: [Int] = []
+            for try await result in group {
+                values.append(try XCTUnwrap(Int(result.output)))
+                XCTAssertGreaterThanOrEqual(result.capturedAt, started)
+                XCTAssertLessThanOrEqual(result.capturedAt, Date())
+            }
+            return values.sorted()
+        }
+        XCTAssertEqual(values, Array(1...12))
+        let result = try await script.execute()
+        XCTAssertEqual(result.output, "13")
+        let failing = ReusableAppleScript(source: "error \"expected failure\" number -1743")
+        do { _ = try await failing.execute(); XCTFail("Script failure was ignored") }
+        catch ServiceError.automationDenied {} // Preserve the existing TCC mapping.
+    }
+
+    @MainActor
+    func testLayerBackedVerticalViewHonorsPartialInvalidation() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 80, height: 1_000),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let view = WordVerticalLyricTextView(frame: NSRect(x: 0, y: 0, width: 80, height: 1_000))
+        view.wantsLayer = true
+        window.contentView = view
+        let text = "春の歌が星空に響いて遠い街まで届く"
+        let line = DesktopLyricsDisplayLine(id: "backing", lineID: UUID(), text: text,
+            wordTimings: [.init(start: 1, duration: 10, text: text)], lineStart: 1, lineEnd: 12,
+            playbackTime: 1, isPlaying: true, isActive: true, distanceFromActive: 0, progress: 0)
+        func configure(_ time: Double) {
+            view.configure(line: line, playbackTime: time, pendingColor: .gray, playedColor: .cyan,
+                secondaryColor: .white, shadowColor: .black, fontSize: 24, alignment: .center)
+        }
+        configure(0)
+        view.displayIfNeeded()
+        let fullCount = view.unitDrawCount
+        XCTAssertGreaterThan(fullCount, 0, "AppKit must actually draw the backing store")
+        configure(1.1)
+        view.displayIfNeeded()
+        let partialCount = view.unitDrawCount - fullCount
+        XCTAssertGreaterThan(partialCount, 0)
+        XCTAssertLessThan(partialCount, fullCount, "Layer backing must preserve partial repainting")
+        configure(1.1)
+        view.displayIfNeeded()
+        XCTAssertEqual(view.unitDrawCount, fullCount + partialCount)
+        print("Layer-backed vertical repaint: \(fullCount) units full, \(partialCount) units partial, 0 units unchanged")
+    }
+
+    @MainActor
+    private func makeBitmap(for view: NSView) throws -> NSBitmapImageRep {
+        let width = Int(view.bounds.width * 2)
+        let height = Int(view.bounds.height * 2)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: width * 4, bitsPerPixel: 32))
+        bitmap.size = view.bounds.size
+        return bitmap
+    }
+
+    @MainActor
+    private func render(_ view: NSView, into existingBitmap: NSBitmapImageRep? = nil, dirtyRect: NSRect? = nil) throws -> Data {
+        let bitmap = try existingBitmap ?? makeBitmap(for: view)
         let graphics = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap))
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = graphics
-        view.draw(view.bounds)
+        let dirty = dirtyRect ?? view.bounds
+        graphics.cgContext.clear(dirty)
+        view.draw(dirty)
         graphics.flushGraphics()
         NSGraphicsContext.restoreGraphicsState()
         return Data(bytes: try XCTUnwrap(bitmap.bitmapData), count: bitmap.bytesPerRow * bitmap.pixelsHigh)

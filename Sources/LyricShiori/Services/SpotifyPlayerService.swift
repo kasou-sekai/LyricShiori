@@ -12,9 +12,7 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
                 return .stopped
             }
             do {
-                return try await Task.detached(priority: .utility) {
-                    try Self.runSnapshotScript()
-                }.value
+                return try await Self.runSnapshotScript()
             } catch {
                 return .stopped
             }
@@ -81,8 +79,7 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
         }
     }
 
-    private nonisolated static func runSnapshotScript() throws -> PlaybackSnapshot {
-        let script = """
+    private nonisolated static let snapshotScript = ReusableAppleScript(source: """
         tell application id "com.spotify.client"
             if player state is stopped then
                 return "stopped"
@@ -99,13 +96,11 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
             set positionSeconds to player position
             return (player state as string) & linefeed & trackID & linefeed & trackName & linefeed & artistName & linefeed & albumName & linefeed & durationMS & linefeed & positionSeconds & linefeed & artworkURL
         end tell
-        """
+        """)
 
-        let requestStartedAt = Date()
-        let output = try runAppleScript(script)
-        let requestFinishedAt = Date()
-        let capturedAt = requestStartedAt.addingTimeInterval(requestFinishedAt.timeIntervalSince(requestStartedAt) / 2)
-        let lines = output.components(separatedBy: .newlines)
+    private nonisolated static func runSnapshotScript() async throws -> PlaybackSnapshot {
+        let result = try await snapshotScript.execute()
+        let lines = result.output.components(separatedBy: .newlines)
         guard lines.first != "stopped", lines.count >= 7 else {
             return .stopped
         }
@@ -124,7 +119,7 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
             embeddedLyrics: nil
         )
 
-        return PlaybackSnapshot(track: track, status: status, elapsedTime: elapsed, capturedAt: capturedAt)
+        return PlaybackSnapshot(track: track, status: status, elapsedTime: elapsed, capturedAt: result.capturedAt)
     }
 
     private func runSpotifyCommand(_ command: String) throws -> String {
@@ -149,5 +144,58 @@ final class SpotifyPlayerService: MusicPlayerService, SpotifyAuthorizationServic
             throw ServiceError.scriptFailed(error[NSAppleScript.errorMessage] as? String ?? "Spotify AppleScript failed")
         }
         return descriptor.stringValue ?? ""
+    }
+}
+
+/// The script is created, compiled and executed only on this serial queue.
+/// Polling and playback notifications can overlap, but must never execute the
+/// same NSAppleScript concurrently. No AppKit or script object crosses queues.
+final class ReusableAppleScript: @unchecked Sendable {
+    struct Result: Sendable {
+        var output: String
+        var capturedAt: Date
+    }
+
+    private let queue = DispatchQueue(label: "dev.lyricshiori.spotify-snapshot", qos: .utility)
+    private let source: String
+    private var script: NSAppleScript?
+
+    init(source: String) {
+        self.source = source
+    }
+
+    func execute() async throws -> Result {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async { [self] in
+                do {
+                    if script == nil {
+                        guard let created = NSAppleScript(source: source) else {
+                            throw ServiceError.adapterNotImplemented("AppleScript")
+                        }
+                        var error: NSDictionary?
+                        guard created.compileAndReturnError(&error) else {
+                            throw Self.failure(error)
+                        }
+                        script = created
+                    }
+                    let startedAt = Date()
+                    var error: NSDictionary?
+                    let descriptor = script!.executeAndReturnError(&error)
+                    let finishedAt = Date()
+                    if let error { throw Self.failure(error) }
+                    continuation.resume(returning: Result(
+                        output: descriptor.stringValue ?? "",
+                        capturedAt: startedAt.addingTimeInterval(finishedAt.timeIntervalSince(startedAt) / 2)
+                    ))
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private static func failure(_ error: NSDictionary?) -> ServiceError {
+        if error?[NSAppleScript.errorNumber] as? Int == -1743 { return .automationDenied }
+        return .scriptFailed(error?[NSAppleScript.errorMessage] as? String ?? "Spotify AppleScript failed")
     }
 }

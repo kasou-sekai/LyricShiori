@@ -47,6 +47,8 @@ final class WordVerticalLyricTextView: NSView {
     private var frameWidth: CGFloat = 0
     private(set) var layoutBuildCount = 0
     private(set) var frameBuildCount = 0
+    private(set) var unitDrawCount = 0
+    private(set) var lastInvalidatedRect: NSRect = .zero
 
     private struct FrameKey: Hashable {
         var unit: Int
@@ -58,7 +60,19 @@ final class WordVerticalLyricTextView: NSView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         frames.removeAll(keepingCapacity: true)
-        needsDisplay = true
+        invalidate(bounds)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = frame.size != newSize
+        super.setFrameSize(newSize)
+        if changed { invalidate(bounds) }
+    }
+
+    override func setBoundsSize(_ newSize: NSSize) {
+        let changed = bounds.size != newSize
+        super.setBoundsSize(newSize)
+        if changed { invalidate(bounds) }
     }
 
     func configure(
@@ -84,7 +98,8 @@ final class WordVerticalLyricTextView: NSView {
             || configuration?.playedColor != playedColor || configuration?.secondaryColor != secondaryColor {
             frames.removeAll(keepingCapacity: true)
         }
-        configuration = Configuration(
+        let previous = configuration
+        let next = Configuration(
             line: line,
             playbackTime: playbackTime,
             pendingColor: pendingColor,
@@ -94,7 +109,67 @@ final class WordVerticalLyricTextView: NSView {
             fontSize: fontSize,
             alignment: alignment
         )
-        needsDisplay = true
+        configuration = next
+        if layoutChanged || previous?.pendingColor != pendingColor
+            || previous?.playedColor != playedColor || previous?.secondaryColor != secondaryColor
+            || previous?.shadowColor != shadowColor || previous?.alignment != alignment {
+            invalidate(bounds)
+        } else if let previous {
+            invalidatePlaybackChanges(from: previous, to: next)
+        }
+    }
+
+    private func invalidate(_ rect: NSRect) {
+        lastInvalidatedRect = rect.integral.intersection(bounds)
+        if !lastInvalidatedRect.isEmpty { setNeedsDisplay(lastInvalidatedRect) }
+    }
+
+    private func invalidatePlaybackChanges(from previous: Configuration, to next: Configuration) {
+        let contentHeight = max(1, units.reduce(0) { $0 + $1.advance })
+        let bottom = contentBottom(configuration: next, contentHeight: contentHeight)
+        guard bottom == contentBottom(configuration: previous, contentHeight: contentHeight) else {
+            invalidate(bounds)
+            return
+        }
+        // AppKit retains pixels outside the invalidated area. Repaint only the
+        // changing words and their neighbours, keeping the original vector
+        // drawing at every animation frame (including its shadow and scale).
+        var changed = NSRect.null
+        var offset: CGFloat = 0
+        for unit in units {
+            let unitBottom = bottom + contentHeight - offset - unit.advance
+            if next.line.isActive, !unit.isWhitespace,
+               progress(for: unit, at: previous.playbackTime) != progress(for: unit, at: next.playbackTime) {
+                changed = changed.union(paintBounds(for: unit, bottom: unitBottom, configuration: next))
+            }
+            offset += unit.advance
+        }
+        invalidate(changed)
+    }
+
+    private func progress(for unit: WordVerticalTypesetter.LayoutUnit, at time: TimeInterval) -> Double? {
+        unit.timing.map { min(max((time - $0.start) / max(0.08, $0.duration), 0), 1) }
+    }
+
+    private func paintBounds(for unit: WordVerticalTypesetter.LayoutUnit, bottom: CGFloat, configuration: Configuration) -> NSRect {
+        // Include both endpoints of the 8% scale / 6.5% lift animation,
+        // glyph overhang and the shadow kernel. Use generous padding rather
+        // than clipping at the nominal character slot.
+        let padding = CGFloat(configuration.fontSize) * 2 + unit.advance * 0.08
+        return NSRect(x: 0, y: bottom, width: bounds.width, height: unit.advance)
+            .insetBy(dx: -padding, dy: -padding)
+    }
+
+    private func contentBottom(configuration: Configuration, contentHeight: CGFloat) -> CGFloat {
+        let overflow = max(0, contentHeight - bounds.height)
+        if overflow > 1 {
+            return bounds.height - contentHeight + overflow * scrollPhase(configuration: configuration)
+        }
+        switch configuration.alignment {
+        case .left: return bounds.height - contentHeight
+        case .center: return (bounds.height - contentHeight) / 2
+        case .right: return 0
+        }
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -111,35 +186,24 @@ final class WordVerticalLyricTextView: NSView {
             frameWidth = bounds.width
         }
         let contentHeight = max(1, units.reduce(0) { $0 + $1.advance })
-        let overflow = max(0, contentHeight - bounds.height)
-        let contentBottom: CGFloat
-        if overflow > 1 {
-            contentBottom = bounds.height - contentHeight
-                + overflow * scrollPhase(configuration: configuration)
-        } else {
-            switch configuration.alignment {
-            case .left:
-                contentBottom = bounds.height - contentHeight
-            case .center:
-                contentBottom = (bounds.height - contentHeight) / 2
-            case .right:
-                contentBottom = 0
-            }
-        }
+        let contentBottom = contentBottom(configuration: configuration, contentHeight: contentHeight)
 
         context.saveGState()
         context.textMatrix = .identity
         context.clip(to: bounds)
+        context.clip(to: dirtyRect)
         var offsetFromTop: CGFloat = 0
         for (index, unit) in units.enumerated() {
             let unitBottom = contentBottom + contentHeight - offsetFromTop - unit.advance
-            draw(
-                unit,
-                index: index,
-                bottom: unitBottom,
-                configuration: configuration,
-                context: context
-            )
+            if paintBounds(for: unit, bottom: unitBottom, configuration: configuration).intersects(dirtyRect) {
+                draw(
+                    unit,
+                    index: index,
+                    bottom: unitBottom,
+                    configuration: configuration,
+                    context: context
+                )
+            }
             offsetFromTop += unit.advance
         }
         context.restoreGState()
@@ -153,10 +217,9 @@ final class WordVerticalLyricTextView: NSView {
         context: CGContext
     ) {
         guard !unit.isWhitespace else { return }
+        unitDrawCount += 1
         let rect = CGRect(x: 0, y: bottom, width: bounds.width, height: unit.advance)
-        let progress = unit.timing.map {
-            min(max((configuration.playbackTime - $0.start) / max(0.08, $0.duration), 0), 1)
-        }
+        let progress = progress(for: unit, at: configuration.playbackTime)
 
         context.saveGState()
         if configuration.line.isActive, let progress {
