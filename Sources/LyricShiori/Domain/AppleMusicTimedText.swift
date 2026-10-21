@@ -122,6 +122,7 @@ struct AppleMusicTTMLParser {
                         }
                     }
                     flatten(element, start: lineStart, end: lineEnd)
+                    words = Self.preservingUntimedText(words, content: text)
                     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                     let resolvedStart = background && element.attribute("begin") == nil
                         ? words.map(\.start).min() ?? lineStart : lineStart
@@ -155,6 +156,28 @@ struct AppleMusicTTMLParser {
             appleMusic: AppleMusicTimedText(ttml: ttml, catalogID: catalogID, storefront: storefront))
         try LyricsResourceLimits.validate(document)
         return document
+    }
+
+    /// Apple places spaces and punctuation between timed spans. Attach these
+    /// literal gaps to adjacent syllables without changing their timestamps.
+    /// Also used when loading caches written before gap preservation.
+    static func preservingUntimedText(_ words: [WordTiming], content: String) -> [WordTiming] {
+        guard !words.isEmpty, words.map(\.text).joined() != content else { return words }
+        var ranges: [Range<String.Index>] = []
+        var cursor = content.startIndex
+        for word in words {
+            guard !word.text.isEmpty,
+                  let range = content.range(of: word.text, range: cursor..<content.endIndex) else { return words }
+            ranges.append(range)
+            cursor = range.upperBound
+        }
+        return words.enumerated().map { index, word in
+            var result = word
+            let start = index == 0 ? content.startIndex : ranges[index].lowerBound
+            let end = index + 1 < ranges.count ? ranges[index + 1].lowerBound : content.endIndex
+            result.text = String(content[start..<end])
+            return result
+        }
     }
 
     static func time(_ value: String) -> TimeInterval? {

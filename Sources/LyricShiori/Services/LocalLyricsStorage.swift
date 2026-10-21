@@ -118,7 +118,7 @@ struct LyricsCacheFile: Codable {
               }) else { throw LyricsParserError.invalidLyrics }
         let metadataTrack = file.track
         let lines = file.lines.map { line in
-            LyricsLine(
+            var decoded = LyricsLine(
                 position: TimeInterval(line.startMilliseconds) / 1000,
                 content: line.text,
                 translations: line.translations,
@@ -131,6 +131,10 @@ struct LyricsCacheFile: Codable {
                 },
                 presentation: line.presentation
             )
+            if line.presentation != nil {
+                decoded.wordTimings = AppleMusicTTMLParser.preservingUntimedText(decoded.wordTimings, content: decoded.content)
+            }
+            return decoded
         }
         guard !lines.isEmpty else { throw LyricsParserError.invalidLyrics }
 

@@ -72,6 +72,24 @@ final class AppleMusicLyricsTests: XCTestCase {
         XCTAssertEqual(line.presentation, document.lines[0].presentation)
     }
 
+    func testUntimedSpacesPunctuationAndLegacyCacheKeepSyllableTimes() throws {
+        let xml = "<tt><body><p begin='1' end='5'><span begin='1' end='2'>Hello</span> <span begin='2' end='3'>ocean</span>! <span begin='3' end='5'>Again</span></p></body></tt>"
+        let document = try AppleMusicTTMLParser().parse(xml)
+        let line = document.lines[0]
+        XCTAssertEqual(line.wordTimings.map(\.text), ["Hello ", "ocean! ", "Again"])
+        XCTAssertEqual(line.wordTimings.map(\.start), [1, 2, 3])
+        XCTAssertEqual(line.wordTimings.map(\.duration), [1, 1, 2])
+        var legacy = document
+        for index in legacy.lines[0].wordTimings.indices {
+            legacy.lines[0].wordTimings[index].text = ["Hello", "ocean", "Again"][index]
+        }
+        let data = try LyricsCacheFile.encode(document: legacy, track: nil)
+        let loaded = try LyricsCacheFile.decode(data, sourceName: nil, localURL: nil, track: nil)
+        XCTAssertEqual(loaded.lines[0].wordTimings.map(\.text).joined(), line.content)
+        XCTAssertEqual(loaded.lines[0].wordTimings.map(\.start), [1, 2, 3])
+        XCTAssertEqual(loaded.appleMusic?.ttml, xml)
+    }
+
     func testTimeFormatsAndInvalidDocuments() throws {
         XCTAssertEqual(AppleMusicTTMLParser.time("1:02:03.25"), 3723.25)
         XCTAssertEqual(AppleMusicTTMLParser.time("00:10.500"), 10.5)
@@ -92,7 +110,7 @@ final class AppleMusicLyricsTests: XCTestCase {
         """
         let document = try AppleMusicTTMLParser().parse(xml)
         XCTAssertEqual(document.lines[0].content, "👨‍👩‍👧‍👦 é")
-        XCTAssertEqual(document.lines[0].wordTimings.map(\.text), ["👨‍👩‍👧‍👦", "é"])
+        XCTAssertEqual(document.lines[0].wordTimings.map(\.text), ["👨‍👩‍👧‍👦 ", "é"])
         XCTAssertEqual(document.lines[0].wordTimings.map(\.start), [1, 2])
     }
 }
