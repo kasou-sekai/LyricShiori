@@ -34,6 +34,7 @@ struct LyricsLinePresentation: Codable, Equatable, Sendable {
     /// Seconds, absolute in the song, like LyricsLine.position / WordTiming.start.
     var end: TimeInterval?
     var element: TimedTextElement
+    var timingMode: String? = nil
 }
 
 struct AppleMusicTTMLParser {
@@ -117,7 +118,10 @@ struct AppleMusicTTMLParser {
                         let before = text.count
                         let wordCount = words.count
                         item.children.forEach { flatten($0, start: s, end: e) }
-                        if words.count == wordCount, text.count > before, item.attribute("begin") != nil {
+                        if root.attribute("timing")?.lowercased() != "line",
+                           root.attribute("timing")?.lowercased() != "none",
+                           item.name == "span", item.attribute("role") != "x-bg",
+                           words.count == wordCount, text.count > before, item.attribute("begin") != nil {
                             words.append(WordTiming(start: s, duration: e.map { max(0, $0 - s) }, text: String(text.dropFirst(before))))
                         }
                     }
@@ -130,7 +134,7 @@ struct AppleMusicTTMLParser {
                         ? words.compactMap { word in word.duration.map { word.start + $0 } }.max() ?? lineEnd : lineEnd
                     lines.append(LyricsLine(position: resolvedStart, content: text, translations: background ? [:] : translations[key] ?? [:], wordTimings: words,
                         presentation: LyricsLinePresentation(key: background ? nil : key, agent: element.attribute("agent") ?? agent,
-                            alignment: resolvedAlignment, isBackground: background, parentKey: parent, end: resolvedEnd, element: element)))
+                            alignment: resolvedAlignment, isBackground: background, parentKey: parent, end: resolvedEnd, element: element, timingMode: root.attribute("timing"))))
                 }
                 append(node, background: false, parent: nil)
                 func backgrounds(_ item: TimedTextElement) {
@@ -156,6 +160,14 @@ struct AppleMusicTTMLParser {
             appleMusic: AppleMusicTimedText(ttml: ttml, catalogID: catalogID, storefront: storefront))
         try LyricsResourceLimits.validate(document)
         return document
+    }
+
+    static func hasAuthoredWordTiming(_ element: TimedTextElement, mode: String?, isRoot: Bool = true) -> Bool {
+        if ["line", "none"].contains(mode?.lowercased() ?? "") { return false }
+        if !isRoot, element.attribute("role") == "x-bg" { return false }
+        if ["text", "textContainer", "delimiter"].contains(element.attribute("ruby") ?? "") { return false }
+        return (element.name == "span" && element.attribute("role") != "x-bg" && element.attribute("begin") != nil)
+            || element.children.contains { hasAuthoredWordTiming($0, mode: mode, isRoot: false) }
     }
 
     /// Apple places spaces and punctuation between timed spans. Attach these

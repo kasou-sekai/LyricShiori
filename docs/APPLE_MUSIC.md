@@ -132,3 +132,10 @@ track. Confirmation selects the independent LRCS family and immediately updates
 the desktop. Prefetch never selects a family. Ordinary cache writes cannot
 replace the committed Apple family. Cache-only refresh detects manual source
 changes without starting additional provider requests.
+
+Paragraph begin/end timestamps are line timing, never syllable timing. Explicit
+`itunes:timing="Line"` disables karaoke even if styling spans are present. Only
+authored timed spans can supply word clocks; old LRCS and browser caches are
+normalized on read without changing source timestamps or manual offsets. A
+same-voice tail overlap in line-only data does not count as a rich duet, and
+sub-millisecond rounding overlap is ignored by automatic source ranking.

@@ -90,6 +90,22 @@ final class AppleMusicLyricsTests: XCTestCase {
         XCTAssertEqual(loaded.appleMusic?.ttml, xml)
     }
 
+    func testLineTimingNeverBecomesSyntheticSyllablesAndLegacyCachesAreRepaired() throws {
+        for attribute in ["", "itunes:timing='Line'"] {
+            let xml = "<tt xmlns:itunes='http://music.apple.com/lyric-ttml-internal' \(attribute)><body><p begin='0' end='20'>Hello ocean</p><p begin='20' end='25'><span>Again</span></p></body></tt>"
+            var document = try AppleMusicTTMLParser().parse(xml)
+            XCTAssertTrue(document.lines.allSatisfy { $0.wordTimings.isEmpty })
+            document.lines[0].wordTimings = [WordTiming(start: 0, duration: 20, text: "Hello ocean")]
+            let data = try LyricsCacheFile.encode(document: document, track: nil)
+            let repaired = try LyricsCacheFile.decode(data, sourceName: nil, localURL: nil, track: nil)
+            XCTAssertTrue(repaired.lines.allSatisfy { $0.wordTimings.isEmpty })
+            XCTAssertEqual(repaired.lines.map(\.position), [0,20])
+            XCTAssertEqual(repaired.appleMusic?.ttml, xml)
+        }
+        let explicitLine = try AppleMusicTTMLParser().parse("<tt xmlns:itunes='x' itunes:timing='Line'><body><p begin='1' end='5'><span begin='1' end='5'>Whole sentence</span></p></body></tt>")
+        XCTAssertTrue(explicitLine.lines[0].wordTimings.isEmpty)
+    }
+
     func testTimeFormatsAndInvalidDocuments() throws {
         XCTAssertEqual(AppleMusicTTMLParser.time("1:02:03.25"), 3723.25)
         XCTAssertEqual(AppleMusicTTMLParser.time("00:10.500"), 10.5)

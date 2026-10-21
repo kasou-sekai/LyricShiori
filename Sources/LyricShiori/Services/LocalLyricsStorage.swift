@@ -155,6 +155,20 @@ struct LyricsCacheFile: Codable {
             desktopLyricsColors: file.desktopLyricsColors,
             appleMusic: file.appleMusic
         )
+        if let apple = document.appleMusic {
+            // Older caches promoted paragraph begin/end to a synthetic word.
+            // Recover only timing provenance; preserve edits, offsets and TTML.
+            let mode = document.lines.compactMap { $0.presentation?.timingMode }.first
+                ?? (try? AppleMusicTTMLParser().parse(apple.ttml).lines.first?.presentation?.timingMode)
+            for index in document.lines.indices {
+                guard var presentation = document.lines[index].presentation else { continue }
+                presentation.timingMode = mode
+                document.lines[index].presentation = presentation
+                if !AppleMusicTTMLParser.hasAuthoredWordTiming(presentation.element, mode: mode) {
+                    document.lines[index].wordTimings = []
+                }
+            }
+        }
         document.selectionState = .from(cacheSource: file.source)
         try LyricsResourceLimits.validate(document)
         return document

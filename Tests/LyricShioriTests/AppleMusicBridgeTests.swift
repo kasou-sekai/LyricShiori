@@ -230,6 +230,18 @@ final class AppleMusicBridgeTests: XCTestCase {
 
 @MainActor
 final class AppleMusicRealCacheTests: XCTestCase {
+    func testUserProvidedLineOnlyCacheUsesOriginalTimingWithoutSyntheticWords() async throws {
+        guard let path = ProcessInfo.processInfo.environment["FULLSCAPE_LINE_FIXTURE"] else { throw XCTSkip("Set FULLSCAPE_LINE_FIXTURE for line-timing acceptance") }
+        let text = try LyricsResourceLimits.readText(at: URL(fileURLWithPath: path))
+        let document = try LyricsCacheFile.decode(text, sourceName: nil, localURL: nil, track: nil)
+        XCTAssertEqual(document.lines.count, 48)
+        XCTAssertTrue(document.lines.allSatisfy { $0.wordTimings.isEmpty })
+        XCTAssertEqual(document.lines.first?.position, 0)
+        XCTAssertEqual(document.lines.first?.presentation?.timingMode, "Line")
+        let score = await FullscapeLyricsMatcher.shared.preferenceScore(document)
+        XCTAssertEqual(score.first, 10)
+    }
+
     func testUserProvidedCoralSeaCacheTraversesBridgeWithoutRefetching() async throws {
         guard let path = ProcessInfo.processInfo.environment["FULLSCAPE_APPLE_FIXTURE"] else { throw XCTSkip("Set FULLSCAPE_APPLE_FIXTURE for the local real-song acceptance check") }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
