@@ -18,7 +18,7 @@ final class LyricsKitLyricsService: LyricsSearchService {
             self.provider = LyricsProviders.Service.netease.create(httpClient: httpClient)
         case .qqMusic:
             self.provider = LyricsProviders.Service.qq.create(httpClient: httpClient)
-        case .local:
+        case .local, .appleMusic:
             fatalError("Local lyrics are loaded through LocalLyricsStorage.")
         }
     }

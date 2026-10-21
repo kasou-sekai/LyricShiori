@@ -5199,6 +5199,146 @@
           }
         }
       }
+    },
+    "Sign in to Apple Music…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in to Apple Music…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录 Apple Music…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登入 Apple Music…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Music にサインイン…"
+          }
+        }
+      }
+    },
+    "Check Apple Music connection" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check Apple Music connection"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查 Apple Music 连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢查 Apple Music 連線"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Music の接続を確認"
+          }
+        }
+      }
+    },
+    "Apple Music is connected" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Music is connected"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Music 已连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Music 已連線"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Music に接続済み"
+          }
+        }
+      }
+    },
+    "Apple Music sign-in is required" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Music sign-in is required"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要登录 Apple Music"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要登入 Apple Music"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Music へのサインインが必要です"
+          }
+        }
+      }
+    },
+    "Sign in with an Apple Music subscription, then enable the source and search again. FullScape can use this session to prepare Apple Music lyrics without another sign-in." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in with an Apple Music subscription, then enable the source and search again. FullScape can use this session to prepare Apple Music lyrics without another sign-in."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请登录已订阅 Apple Music 的账号，然后启用此来源并重新搜索。FullScape 可使用此会话预取 Apple Music 歌词，无需再次登录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請登入已訂閱 Apple Music 的帳號，然後啟用此來源並重新搜尋。FullScape 可使用此工作階段預先取得 Apple Music 歌詞，無須再次登入。"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Music のサブスクリプションでサインインし、このソースを有効にして再検索してください。FullScape はこのセッションで歌詞を事前取得でき、再ログインは不要です。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

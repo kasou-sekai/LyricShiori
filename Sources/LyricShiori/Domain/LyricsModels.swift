@@ -74,6 +74,7 @@ struct LyricsDocument: Identifiable, Equatable, Sendable {
     var selectionState: LyricsSelectionState = .automaticSearch(cachedWithoutPlugin: false)
     /// Optional per-lyric display data persisted in the LRCS `desktopLyricsColors` field.
     var desktopLyricsColors: DesktopLyricsColors? = nil
+    var appleMusic: AppleMusicTimedText? = nil
 
     var adjustedDelay: TimeInterval {
         let providerCorrection = sourceName?.caseInsensitiveCompare(LyricsProviderID.qqMusic.rawValue) == .orderedSame
@@ -88,6 +89,14 @@ struct LyricsDocument: Identifiable, Equatable, Sendable {
 
     var hasWordTimings: Bool {
         lines.contains { !$0.wordTimings.isEmpty }
+    }
+
+    func activeLineIndices(at playbackTime: TimeInterval) -> [Int] {
+        let target = playbackTime + adjustedDelay
+        return lines.indices.filter { index in
+            guard let end = lines[index].presentation?.end else { return false }
+            return lines[index].position <= target && target < end
+        }
     }
 
     func lineIndex(at playbackTime: TimeInterval) -> Int? {
@@ -224,6 +233,7 @@ struct LyricsLine: Identifiable, Equatable, Codable, Sendable {
     var content: String
     var translations: [String: String]
     var wordTimings: [WordTiming]
+    var presentation: LyricsLinePresentation? = nil
 }
 
 struct WordTiming: Identifiable, Equatable, Codable, Sendable {
@@ -255,6 +265,7 @@ struct LyricsSearchResult: Identifiable, Equatable {
 enum LyricsProviderID: String, CaseIterable, Identifiable, Codable {
     case netease = "NetEase"
     case qqMusic = "QQMusic"
+    case appleMusic = "Apple Music"
     case local = "Local"
 
     var id: String { rawValue }

@@ -7,6 +7,7 @@ LyricShiori is a lightweight macOS lyrics companion for Spotify. It displays the
 - Display synchronized lyrics in the menu bar.
 - Show customizable desktop lyrics while you listen.
 - Search, import, export, and adjust lyrics when needed.
+- Optional [Apple Music TTML source](docs/APPLE_MUSIC.md), with preserved duet, background-vocal and nested timing data.
 
 ## Recommended companion
 

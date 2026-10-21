@@ -5,6 +5,7 @@ import Foundation
 /// A track duration is required so normal long timestamps are never guessed at.
 enum LyricsTimingNormalizer {
     static func normalized(_ document: LyricsDocument, expectedDuration: TimeInterval?) -> LyricsDocument {
+        guard document.appleMusic == nil else { return document }
         guard let scale = scaleFactor(for: document, expectedDuration: expectedDuration) else {
             return document
         }

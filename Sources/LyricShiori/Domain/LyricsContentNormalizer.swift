@@ -4,6 +4,7 @@ enum LyricsContentNormalizer {
     private static let creditPattern = #"^(?:作?词|作?曲|编曲|制作人|监制|出品|录音|混音|母带|词版权|曲版权|录音作品|联合出品|人声|吉他|贝斯|鼓|弦乐|和声|OP|SP|纯音乐|instrumental)\s*[:：]?"#
 
     static func removingLeadingMetadata(from document: LyricsDocument, track: TrackIdentity? = nil) -> LyricsDocument {
+        guard document.appleMusic == nil else { return document }
         let identities = identityTexts(for: document, track: track)
         guard let firstLyricIndex = document.lines.firstIndex(where: {
             isMeaningfulLyric($0.content) && !matchesIdentity($0.content, identities: identities)

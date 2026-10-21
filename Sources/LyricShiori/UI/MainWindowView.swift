@@ -142,6 +142,10 @@ struct ScrollLyricsList: View {
     @Bindable var store: LyricShioriStore
     var lyrics: LyricsDocument
 
+    private func isActive(_ index: Int) -> Bool {
+        lyrics.appleMusic != nil ? store.activeTimedTextLineIndices.contains(index) : index == store.currentLineIndex
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             List(Array(lyrics.lines.enumerated()), id: \.element.id) { index, line in
@@ -153,23 +157,24 @@ struct ScrollLyricsList: View {
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                             .frame(width: 64, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: line.presentation?.alignment == .right ? .trailing : .leading, spacing: 3) {
                             Text(store.displayedLineText(for: line))
-                                .font(index == store.currentLineIndex ? .title3.weight(.semibold) : .body)
+                                .font(line.presentation?.isBackground == true ? .caption : (isActive(index) ? .title3.weight(.semibold) : .body))
                             ForEach(line.translations.sorted(by: { $0.key < $1.key }), id: \.key) { _, value in
                                 Text(value)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        Spacer()
+                        .frame(maxWidth: .infinity, alignment: line.presentation?.alignment == .right ? .trailing : .leading)
+                        .multilineTextAlignment(line.presentation?.alignment == .right ? .trailing : .leading)
                     }
                     .contentShape(Rectangle())
                     .padding(.vertical, 5)
                 }
                 .buttonStyle(.plain)
                 .id(line.id)
-                .listRowBackground(index == store.currentLineIndex ? Color.accentColor.opacity(0.12) : Color.clear)
+                .listRowBackground(isActive(index) ? Color.accentColor.opacity(0.12) : Color.clear)
             }
             .onChange(of: store.currentLineIndex) { _, newValue in
                 if let newValue, lyrics.lines.indices.contains(newValue) {

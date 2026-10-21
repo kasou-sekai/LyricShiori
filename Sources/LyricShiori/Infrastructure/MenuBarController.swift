@@ -125,7 +125,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         guard !text.isEmpty else { return nil }
 
         let line = lyrics.lines[index]
-        let lineEnd = lyrics.lines[(index + 1)...].first?.position
+        let lineEnd = line.presentation?.end ?? lyrics.lines[(index + 1)...].first?.position
             ?? line.wordTimings.last.flatMap { timing in
                 timing.duration.map { timing.start + $0 }
             }

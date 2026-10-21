@@ -6,7 +6,9 @@ struct LyricsFilter {
     var blockedPatterns: [String]
 
     func apply(to document: LyricsDocument) -> LyricsDocument {
-        guard enabled else { return document }
+        // TTML contains authored vocal roles and punctuation; generic LRC
+        // credit filters must not remove those voices from the saved score.
+        guard enabled, document.appleMusic == nil else { return document }
         var copy = document
         copy.lines = document.lines.filter { line in
             let trimmed = line.content.trimmingCharacters(in: .whitespacesAndNewlines)

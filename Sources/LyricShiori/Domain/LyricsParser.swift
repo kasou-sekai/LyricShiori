@@ -21,6 +21,11 @@ struct LyricsParser {
 
     func parse(_ content: String, sourceName: String? = nil, localURL: URL? = nil) throws -> LyricsDocument {
         guard content.utf8.count <= LyricsResourceLimits.maximumFileBytes else { throw LyricsParserError.invalidLyrics }
+        if content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<") {
+            var document = try AppleMusicTTMLParser().parse(content)
+            document.localURL = localURL
+            return document
+        }
         var metadata = LyricsMetadata(title: nil, artist: nil, album: nil, languageCode: nil, translationLanguages: [], request: nil)
         var offset = 0
         var selectionState: LyricsSelectionState?

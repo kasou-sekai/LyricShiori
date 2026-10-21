@@ -17,6 +17,7 @@ struct DesktopLyricsDisplayLine: Identifiable, Equatable {
     var isActive: Bool
     var distanceFromActive: Int
     var progress: Double
+    var presentation: LyricsLinePresentation? = nil
 }
 
 struct DesktopLyricsPalette: Equatable {
@@ -84,6 +85,7 @@ final class LyricShioriStore {
     var settings: AppSettings
     var playback: PlaybackSnapshot = .stopped
     var currentLyrics: LyricsDocument?
+    var activeTimedTextLineIndices: Set<Int> = []
     var currentLineIndex: Int?
     var searchResults: [LyricsSearchResult] = []
     var lastError: String?
@@ -100,6 +102,7 @@ final class LyricShioriStore {
     @ObservationIgnored private let conversion: ChineseConversionService
     @ObservationIgnored private let sharedLyricsCache: SharedLyricsCache
     @ObservationIgnored private let sharedLyricsCacheServer: SharedLyricsCacheServer
+    @ObservationIgnored private var appleMusicPrefetch: AppleMusicPrefetchCoordinator?
     private var playerServices: [PlayerKind: MusicPlayerService]
     private var lyricsServices: [LyricsProviderID: LyricsSearchService]
     private var playerTask: Task<Void, Never>?
@@ -131,7 +134,16 @@ final class LyricShioriStore {
         self.lyricsServices = [
             .netease: LyricsKitLyricsService(providerID: .netease),
             .qqMusic: LyricsKitLyricsService(providerID: .qqMusic),
+            .appleMusic: AppleMusicLyricsService(),
         ]
+        let prefetch = AppleMusicPrefetchCoordinator(cache: sharedLyricsCache, storage: { [weak self] in
+            self?.localLyricsStorage() ?? LocalLyricsStorage()
+        })
+        self.appleMusicPrefetch = prefetch
+        self.sharedLyricsCacheServer.onRichRelease = { data in try await prefetch.release(data) }
+        self.sharedLyricsCacheServer.onRichRequest = { data, activate in
+            try await prefetch.handle(data, activate: activate)
+        }
         self.sharedLyricsCacheServer.onEntrySaved = { [weak self] entry in
             Task { @MainActor in
                 self?.sharedLyricsCacheEntrySaved(entry)
@@ -312,30 +324,12 @@ final class LyricShioriStore {
         // Re-sync here so a successfully loaded cache can show the window again.
         syncDesktopLyricsWindow()
         guard !currentLyricsBlocksAutomaticSearch else { return }
-        guard !pluginConnected else { return }
+        guard !settings.connectFullscape else { return }
         let searchID = activeSearchID
         automaticSearchID = searchID
         let trackSignature = track.signature
         searchTask = Task { [weak self] in
-            if self?.settings.connectFullscape == true {
-                // Cover the bridge session handshake as well as the first
-                // presence/lease update before deciding the plugin is absent.
-                try? await Task.sleep(for: .milliseconds(2_500))
-                guard !Task.isCancelled else { return }
-                if self?.sharedLyricsCacheServer.hasActiveConnection() == true {
-                    self?.isFullscapePluginConnected = true
-                    if self?.currentLyrics?.selectionState.cacheSource == .withoutPlugin {
-                        self?.currentLyrics = nil
-                        self?.currentLineIndex = nil
-                        self?.syncDesktopLyricsWindow()
-                    }
-                    if self?.automaticSearchID == searchID {
-                        self?.automaticSearchID = nil
-                    }
-                    return
-                }
-            }
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, self?.settings.connectFullscape == false else { return }
             await self?.searchLyricsForCurrentTrack(searchID: searchID, trackSignature: trackSignature)
             if self?.automaticSearchID == searchID {
                 self?.automaticSearchID = nil
@@ -462,6 +456,21 @@ final class LyricShioriStore {
 
         guard !Task.isCancelled, isCurrentSearch(effectiveSearchID, requiredTrackSignature: requiredTrackSignature) else { return }
         searchResults = collected
+        if let track = playback.track {
+            let trackRequest = ShioriLyricsSearchRequest(title: track.title, artist: track.artist,
+                album: track.album, duration: track.duration, limit: request.limit)
+            let strictMatcher = LyricsCandidateMatcher(request: trackRequest)
+            let matched = collected.compactMap { strictMatcher.evaluate($0) }.sorted(by: strictMatcher.sort)
+            for family in LyricsStorageFamily.allCases {
+                if let candidate = matched.first(where: { LyricsStorageFamily(document: $0.document) == family }) {
+                    var document = candidate.document
+                    document.selectionState = .automaticSearch(cachedWithoutPlugin: true)
+                    do {
+                        _ = try localLyricsStorage().saveCandidate(document, for: track, preservingManualSelection: true)
+                    } catch { lastError = error.localizedDescription }
+                }
+            }
+        }
         if acceptFirstResult, shouldAcceptAutomaticSearchResult, let first = collected.first {
             acceptLyrics(first.document, sourceName: first.provider.rawValue, isManualSelection: false)
         }
@@ -790,7 +799,11 @@ final class LyricShioriStore {
         let lowerBound = max(lyrics.lines.startIndex, index - settings.desktopLyricsPreviousLineCount)
         let upperBound = min(lyrics.lines.index(before: lyrics.lines.endIndex), index + settings.desktopLyricsNextLineCount)
         let playbackTime = playback.effectiveElapsedTime + lyrics.adjustedDelay
-        return (lowerBound...upperBound).compactMap { lineIndex in
+        let activeIndices = activeTimedTextLineIndices
+        var visibleIndices = Set(lowerBound...upperBound)
+        visibleIndices.formUnion(activeIndices)
+        return visibleIndices.sorted().compactMap { lineIndex in
+            guard lyrics.lines.indices.contains(lineIndex) else { return nil }
             let line = lyrics.lines[lineIndex]
             let text = originalLineText(for: line).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return nil }
@@ -800,16 +813,17 @@ final class LyricShioriStore {
                 text: text,
                 wordTimings: line.wordTimings,
                 lineStart: line.position,
-                lineEnd: lyrics.lines[(lineIndex + 1)...].first?.position
+                lineEnd: line.presentation?.end ?? lyrics.lines[(lineIndex + 1)...].first?.position
                     ?? line.wordTimings.last.flatMap { timing in
                         timing.duration.map { timing.start + $0 }
                     }
                     ?? playback.track?.duration,
                 playbackTime: playbackTime,
                 isPlaying: playback.status == .playing,
-                isActive: lineIndex == index,
-                distanceFromActive: lineIndex - index,
-                progress: lineIndex == index ? currentLineProgress() : (lineIndex < index ? 1 : 0)
+                isActive: lyrics.appleMusic != nil ? activeIndices.contains(lineIndex) : lineIndex == index,
+                distanceFromActive: activeIndices.contains(lineIndex) ? 0 : lineIndex - index,
+                progress: lineIndex == index ? currentLineProgress() : (lineIndex < index ? 1 : 0),
+                presentation: line.presentation
             )
         }
     }
@@ -822,7 +836,7 @@ final class LyricShioriStore {
         }
         let current = playback.effectiveElapsedTime + lyrics.adjustedDelay
         let start = lyrics.lines[index].position
-        let end = lyrics.lines[(index + 1)...].first?.position
+        let end = lyrics.lines[index].presentation?.end ?? lyrics.lines[(index + 1)...].first?.position
             ?? lyrics.lines[index].wordTimings.last?.start
             ?? playback.track?.duration
             ?? start + 3
@@ -907,12 +921,18 @@ final class LyricShioriStore {
 
     func updateCurrentLine() {
         guard let currentLyrics else {
+            if !activeTimedTextLineIndices.isEmpty { activeTimedTextLineIndices = [] }
             if currentLineIndex != nil {
                 currentLineIndex = nil
             }
             return
         }
-        let nextIndex = currentLyrics.lineIndex(at: playback.effectiveElapsedTime)
+        let active = currentLyrics.activeLineIndices(at: playback.effectiveElapsedTime)
+        let activeSet = Set(active)
+        if activeTimedTextLineIndices != activeSet { activeTimedTextLineIndices = activeSet }
+        let nextIndex = active.first(where: {
+            currentLyrics.lines[$0].presentation?.isBackground != true
+        }) ?? currentLyrics.lineIndex(at: playback.effectiveElapsedTime)
         if currentLineIndex != nextIndex {
             currentLineIndex = nextIndex
         }
@@ -1030,7 +1050,7 @@ final class LyricShioriStore {
 
     private func orderedProviders() -> [LyricsProviderID] {
         let enabled = settings.enabledProviders
-        return [.qqMusic, .netease].filter { enabled.contains($0) }
+        return [.appleMusic, .qqMusic, .netease].filter { enabled.contains($0) }
     }
 
     private func localLyricsStorage() -> LocalLyricsStorage {
@@ -1100,7 +1120,7 @@ final class LyricShioriStore {
             return
         }
         if let cached = sharedLyricsCache.localPersistenceDocument(from: entry) {
-            let existing = try? localLyricsStorage().loadLyrics(for: cached.track)
+            let existing = try? localLyricsStorage().loadLyrics(for: cached.track, family: LyricsStorageFamily(document: cached.document))
             if existing?.selectionState.cacheSource != .manual
                 || cached.document.selectionState.cacheSource == .manual {
                 persistLocalLyrics(cached.document, for: cached.track)
@@ -1164,7 +1184,7 @@ final class LyricShioriStore {
             if copy.desktopLyricsColors == nil {
                 copy.desktopLyricsColors = currentDesktopLyricsColors()
             }
-            _ = try localLyricsStorage().save(copy, for: track)
+            _ = try localLyricsStorage().saveCandidate(copy, for: track)
         } catch {
             lastError = error.localizedDescription
         }

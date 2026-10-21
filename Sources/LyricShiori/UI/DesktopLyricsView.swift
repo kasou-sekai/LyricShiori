@@ -63,10 +63,10 @@ struct DesktopLyricsView: View {
                 DesktopLyricLineView(
                     line: line,
                     palette: palette,
-                    fontSize: fontSize,
-                    alignment: alignment
+                    fontSize: line.presentation?.isBackground == true ? fontSize * 0.65 : fontSize,
+                    alignment: line.presentation?.alignment.map { $0.desktopAlignment } ?? alignment
                 )
-                .frame(maxWidth: .infinity, alignment: alignment.frameAlignment)
+                .frame(maxWidth: .infinity, alignment: (line.presentation?.alignment.map { $0.desktopAlignment } ?? alignment).frameAlignment)
                 .offset(y: Double(offset) * slotHeight)
             }
         }
@@ -237,7 +237,16 @@ private struct DesktopLyricText: View {
         // Do not replace an upcoming Text view with a different AppKit view at
         // the line boundary. Keeping one renderer alive lets its actual glyphs
         // travel into the active slot instead of fading out and back in.
-        if hasKaraokeTimings {
+        if line.presentation?.element.needsAttributedRendering == true {
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !line.isPlaying || !line.isActive)) { context in
+                AppleMusicStyledText(line: liveStyledLine(at: context.date), fontSize: fontSize,
+                    pending: pendingColor, played: playedColor, alignment: alignment)
+            }
+            .frame(height: max(fontSize * 1.58, 30))
+            .onAppear { styledAnchor = Date() }
+            .onChange(of: line.playbackTime) { _, _ in styledAnchor = Date() }
+            .onChange(of: line.isPlaying) { _, _ in styledAnchor = Date() }
+        } else if hasKaraokeTimings {
             CoreAnimationKaraokeLine(
                 line: renderedLine,
                 playbackTime: renderedLine.playbackTime,
@@ -263,6 +272,16 @@ private struct DesktopLyricText: View {
             .frame(maxWidth: .infinity)
             .frame(height: max(fontSize * 1.58, 30))
         }
+    }
+
+    @State private var styledAnchor = Date()
+
+    private func liveStyledLine(at date: Date) -> DesktopLyricsDisplayLine {
+        var copy = renderedLine
+        if copy.isPlaying && copy.isActive {
+            copy.playbackTime += max(0, date.timeIntervalSince(styledAnchor))
+        }
+        return copy
     }
 
     private var hasKaraokeTimings: Bool {
@@ -1176,6 +1195,16 @@ private extension DesktopLyricsAlignment {
         case .left: .leading
         case .center: .center
         case .right: .trailing
+        }
+    }
+}
+
+private extension LyricsLinePresentation.Alignment {
+    var desktopAlignment: DesktopLyricsAlignment {
+        switch self {
+        case .left: .left
+        case .center: .center
+        case .right: .right
         }
     }
 }

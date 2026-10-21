@@ -24,6 +24,9 @@ let package = Package(
             exclude: ["Supporting/Info.plist"],
             resources: [
                 .copy("Resources/emoji-bookmark-template.png"),
+                .copy("Resources/fullscape-matcher.js"),
+                .copy("Resources/fullscape-matcher-version.txt"),
+                .copy("Resources/fullscape-matcher-license.txt"),
                 .process("Resources/Localizable.xcstrings"),
             ]
         ),

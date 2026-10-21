@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Network
 
@@ -36,6 +37,10 @@ final class SharedLyricsCache: @unchecked Sendable {
         var hidden: Bool?
         var desktopLyricsColors: DesktopLyricsColors? = nil
         var debug: AnyCodableValue?
+        var sourceFamily: String? = nil
+        var documentRevision: String? = nil
+        var validatedMatcherVersion: String? = nil
+        var appleMusic: AppleMusicTimedText? = nil
         var manualResetAt: Int64? = nil
     }
 
@@ -61,6 +66,7 @@ final class SharedLyricsCache: @unchecked Sendable {
         var furigana: String?
         var words: [Word]?
         var duration: Double?
+        var presentation: LyricsLinePresentation? = nil
     }
 
     struct Word: Codable {
@@ -142,7 +148,9 @@ final class SharedLyricsCache: @unchecked Sendable {
         isManualSelection: Bool,
         cachedWithoutPlugin: Bool
     ) throws {
-        guard isSpotifyTrack(track.id) else { return }
+        // Reserved schema only: sharing Apple Music requires a later opt-in.
+        guard document.appleMusic == nil, !document.lines.contains(where: { $0.presentation != nil }),
+              isSpotifyTrack(track.id) else { return }
         let lines = lines(from: document)
         guard !lines.isEmpty else { return }
         let now = nowMilliseconds()
@@ -321,7 +329,8 @@ final class SharedLyricsCache: @unchecked Sendable {
     }
 
     func encodedEntry(trackUri: String, kind: Kind) throws -> Data? {
-        guard let entry = try entry(trackUri: trackUri, kind: kind) else { return nil }
+        guard let entry = try entry(trackUri: trackUri, kind: kind),
+              entry.appleMusic == nil, !entry.lines.contains(where: { $0.presentation != nil }) else { return nil }
         return try encoder.encode(entry)
     }
 
@@ -401,7 +410,8 @@ final class SharedLyricsCache: @unchecked Sendable {
                 translations: translations,
                 wordTimings: (line.words ?? []).map {
                     WordTiming(start: $0.time / 1000, duration: $0.duration / 1000, text: $0.text)
-                }
+                },
+                presentation: line.presentation
             )
         }
         var document = LyricsDocument(
@@ -418,12 +428,26 @@ final class SharedLyricsCache: @unchecked Sendable {
             sourceName: entry.sourceName ?? defaultSourceName(for: entry),
             localURL: url,
             needsPersist: false,
-            desktopLyricsColors: entry.desktopLyricsColors
+            desktopLyricsColors: entry.desktopLyricsColors,
+            appleMusic: entry.appleMusic
         )
         document = LyricsTimingNormalizer.normalized(document, expectedDuration: track.duration)
         document.selectionState = selectionState(from: entry)
         document.metadata.languageCode = LyricsLanguageRecognizer.recognize(in: lines.map(\.content).joined(separator: "\n"))
         return LyricsContentNormalizer.removingLeadingMetadata(from: document, track: track)
+    }
+
+    /// Only the negotiated v2 path may export this richer representation.
+    func richBridgeEntry(_ document: LyricsDocument, for track: TrackIdentity) throws -> Entry {
+        try LyricsResourceLimits.validate(document)
+        var entry = entry(from: document, for: track, kind: .enhanced)
+        entry.sourceFamily = LyricsStorageFamily(document: document).rawValue
+        // The source TTML remains lossless in LRCS. Avoid duplicating it over
+        // localhost or consuming the browser's ordinary localStorage quota.
+        entry.appleMusic = nil
+        let bytes = Data(try LyricsCacheFile.encode(document: document, track: track).utf8)
+        entry.documentRevision = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        return entry
     }
 
     private func entry(from document: LyricsDocument, for track: TrackIdentity, kind: Kind) -> Entry {
@@ -450,7 +474,8 @@ final class SharedLyricsCache: @unchecked Sendable {
             timingOffsetApplied: false,
             hidden: false,
             desktopLyricsColors: document.desktopLyricsColors,
-            debug: nil
+            debug: nil,
+            appleMusic: document.appleMusic
         )
     }
 
@@ -473,7 +498,8 @@ final class SharedLyricsCache: @unchecked Sendable {
                         text: $0.text
                     )
                 },
-                duration: nil
+                duration: line.presentation?.end.map { ($0 - line.position) * 1000 },
+                presentation: line.presentation
             )
         }
     }
@@ -595,6 +621,7 @@ final class SharedLyricsCache: @unchecked Sendable {
     }
 
     private func isSharedBridgePreferred(_ entry: Entry) -> Bool {
+        guard entry.appleMusic == nil, !entry.lines.contains(where: { $0.presentation != nil }) else { return false }
         switch effectiveCacheSource(for: entry) {
         case .manual, .plugin:
             return true
@@ -740,6 +767,8 @@ final class SharedLyricsCache: @unchecked Sendable {
         guard !lifetime.overflow, entry.cachedAt >= 0,
               isSpotifyTrack(entry.trackUri),
               entry.trackUri.utf8.count <= 256,
+              (entry.appleMusic?.ttml.utf8.count ?? 0) <= LyricsResourceLimits.maximumFileBytes,
+              entry.appleMusic.map({ $0.version == 1 }) != false,
               entry.lines.count <= 5_000,
               entry.offsetMilliseconds.map({ LyricsResourceLimits.validMilliseconds(Double($0)) }) != false,
               entry.expiresAt > entry.cachedAt,
@@ -747,7 +776,8 @@ final class SharedLyricsCache: @unchecked Sendable {
             return false
         }
         return entry.lines.allSatisfy { line in
-            line.text.utf8.count <= 16_384
+            LyricsResourceLimits.validPresentation(line.presentation, start: (line.time ?? 0) / 1000)
+                && line.text.utf8.count <= 16_384
                 && (line.translation?.utf8.count ?? 0) <= 16_384
                 && (line.romanization?.utf8.count ?? 0) <= 16_384
                 && (line.furigana?.utf8.count ?? 0) <= 16_384
@@ -778,6 +808,8 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     private struct SessionResponse: Codable {
         var token: String
         var protocolVersion: Int
+        var capabilities: [String] = ["apple-music-v2"]
+        var matcherVersion: String = FullscapeLyricsMatcher.version
     }
 
     private let cache: SharedLyricsCache
@@ -803,6 +835,8 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     private let allowedOrigins: Set<String> = [
         "https://xpui.app.spotify.com",
     ]
+    var onRichRelease: (@Sendable (Data) async throws -> Void)?
+    var onRichRequest: (@Sendable (Data, Bool) async throws -> Data)?
     var onEntrySaved: ((SharedLyricsCache.Entry) -> Void)?
 
     init(cache: SharedLyricsCache, localStorage: LocalLyricsStorage = LocalLyricsStorage(), port: NWEndpoint.Port = 24887, connectionTimeout: TimeInterval = 5) {
@@ -985,13 +1019,15 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     }
 
     private func respond(to data: Data, on connection: NWConnection) {
-        let response: Data
-        do {
-            response = try handleRequest(data)
-        } catch {
-            response = httpResponse(status: "500 Internal Server Error", body: Data(describe(error).utf8))
+        Task {
+            let response: Data
+            do {
+                response = try await handleRequest(data)
+            } catch {
+                response = httpResponse(status: "400 Bad Request")
+            }
+            send(response, on: connection)
         }
-        send(response, on: connection)
     }
 
     private func send(_ response: Data, on connection: NWConnection) {
@@ -1001,7 +1037,7 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
         })
     }
 
-    private func handleRequest(_ data: Data) throws -> Data {
+    private func handleRequest(_ data: Data) async throws -> Data {
         let separator = Data("\r\n\r\n".utf8)
         guard let headerRange = data.range(of: separator),
               headerRange.lowerBound <= maximumHeaderBytes,
@@ -1052,6 +1088,18 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
             return httpResponse(status: "413 Payload Too Large", origin: origin)
         }
         let body = Data(data[headerRange.upperBound..<(headerRange.upperBound + declaredLength)])
+
+        if method == "POST", components.path == "/lyrics-v2/release" {
+            guard let onRichRelease else { return httpResponse(status: "404 Not Found", origin: origin) }
+            try await onRichRelease(body)
+            return httpResponse(status: "204 No Content", origin: origin)
+        }
+
+        if method == "POST", ["/lyrics-v2/prepare", "/lyrics-v2/activate"].contains(components.path) {
+            guard let onRichRequest else { return httpResponse(status: "404 Not Found", origin: origin) }
+            let result = try await onRichRequest(body, components.path.hasSuffix("activate"))
+            return httpResponse(status: "200 OK", body: result, contentType: "application/json", origin: origin)
+        }
 
         if method == "POST", components.path == "/bridge-presence" {
             let presence = try JSONDecoder().decode(BridgePresence.self, from: body)
@@ -1131,7 +1179,7 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
             localFileURL: nil,
             embeddedLyrics: nil
         )
-        guard let document = try localStorage.loadLyrics(for: track) else {
+        guard let document = try localStorage.loadLyrics(for: track, family: .standard) else {
             return nil
         }
         return try cache.encodedBestPreferredEntry(document, for: track, kind: kind)

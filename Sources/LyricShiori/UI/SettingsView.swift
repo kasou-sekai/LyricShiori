@@ -194,7 +194,7 @@ private struct CurrentLyricsSettingsView: View {
             LyricsDetailView(store: store)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.lrcs]) { result in
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.lrcs, .xml]) { result in
             if case .success(let url) = result {
                 store.importLyrics(from: url)
             }
@@ -649,6 +649,7 @@ private struct DesktopLyricsPresetPreview: View {
 
 private struct SourceSettingsView: View {
     @Bindable var store: LyricShioriStore
+    @State private var appleMusicAuthorized: Bool?
 
     var body: some View {
         Form {
@@ -658,7 +659,7 @@ private struct SourceSettingsView: View {
                         .foregroundStyle(.secondary)
                         .accessibilityLabel("Fullscape plugin source is enabled")
                 }
-                ForEach([LyricsProviderID.netease, .qqMusic]) { provider in
+                ForEach([LyricsProviderID.netease, .qqMusic, .appleMusic]) { provider in
                     Toggle(provider.rawValue, isOn: Binding(
                         get: { store.settings.enabledProviders.contains(provider) },
                         set: { enabled in
@@ -670,6 +671,20 @@ private struct SourceSettingsView: View {
                         }
                     ))
                 }
+                Button("Sign in to Apple Music…") {
+                    AppleMusicLyricsSession.shared.showSignIn()
+                }
+                Button("Check Apple Music connection") {
+                    Task { appleMusicAuthorized = await AppleMusicLyricsSession.shared.isAuthorized() }
+                }
+                if let appleMusicAuthorized {
+                    Text(appleMusicAuthorized ? "Apple Music is connected" : "Apple Music sign-in is required")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Sign in with an Apple Music subscription, then enable the source and search again. FullScape can use this session to prepare Apple Music lyrics without another sign-in.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

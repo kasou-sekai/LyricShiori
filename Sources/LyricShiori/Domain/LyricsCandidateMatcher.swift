@@ -58,7 +58,9 @@ struct LyricsCandidateMatcher {
             return lhsDurationDiff < rhsDurationDiff
         }
         if lhs.provider != rhs.provider {
-            return lhs.provider == .qqMusic
+            let order: [LyricsProviderID] = [.appleMusic, .qqMusic, .netease, .local]
+            return (order.firstIndex(of: lhs.provider) ?? order.count)
+                < (order.firstIndex(of: rhs.provider) ?? order.count)
         }
         return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
     }
