@@ -2,7 +2,8 @@ import CryptoKit
 import Foundation
 
 /// Prefetch only acquires Apple Music. FullScape owns Spotify and ordinary
-/// providers while collaboration is enabled. No job changes desktop selection.
+/// providers while collaboration is enabled. Only a confirmed display selection
+/// changes the desktop source; speculative prefetch never does.
 @MainActor
 final class AppleMusicPrefetchCoordinator {
     struct Request: Codable, Sendable {
@@ -20,6 +21,7 @@ final class AppleMusicPrefetchCoordinator {
         var role: String? = nil
         var interestRevision: Int? = nil
         var knownRevision: String? = nil
+        var cachedOnly: Bool? = nil
         var sourcePolicy: String
     }
     struct Response: Codable {
@@ -46,6 +48,64 @@ final class AppleMusicPrefetchCoordinator {
         let value = try JSONDecoder().decode(Release.self, from: data)
         let key = value.clientSessionId + "/" + value.role
         if interests[key]?.track == value.trackUri, interests[key]?.generation == value.generation { interests[key] = nil }
+    }
+
+    var onSelection: ((LyricsDocument, TrackIdentity) -> Void)?
+    var canSelectTrack: ((String) -> Bool)?
+    var selectionTrack: ((String) -> TrackIdentity?)?
+    private var selectionRevisions: [String: Int] = [:]
+
+    func confirmSelection(_ data: Data) throws -> Data {
+        struct Selection: Decodable {
+            var trackUri: String
+            var sourceFamily: String
+            var documentRevision: String?
+            var entry: SharedLyricsCache.Entry?
+            var clientSessionId: String
+            var selectionRevision: Int
+            var sourcePolicy: String
+        }
+        let value = try JSONDecoder().decode(Selection.self, from: data)
+        guard value.trackUri.hasPrefix("spotify:track:"), value.trackUri.utf8.count <= 256,
+              value.clientSessionId.utf8.count <= 128,
+              ["auto", "apple-music", "standard"].contains(value.sourcePolicy),
+              let family = LyricsStorageFamily(rawValue: value.sourceFamily) else { throw LyricsParserError.invalidLyrics }
+        func reply(_ status: String) throws -> Data {
+            try JSONSerialization.data(withJSONObject: ["status": status])
+        }
+        if value.selectionRevision < (selectionRevisions[value.clientSessionId] ?? -1) { return try reply("stale") }
+        guard canSelectTrack?(value.trackUri) != false else { return try reply("stale") }
+        if try cache.entry(trackUri: value.trackUri, kind: .enhanced)?.hidden == true { return try reply("hidden") }
+        let storage = storage()
+        let track: TrackIdentity
+        var document: LyricsDocument
+        if family == .appleMusic {
+            guard let entry = value.entry, entry.trackUri == value.trackUri,
+                  let cached = cache.localPersistenceDocument(from: entry),
+                  let local = try storage.loadLyrics(for: cached.track, family: .appleMusic),
+                  try cache.richBridgeEntry(local, for: cached.track).documentRevision == value.documentRevision else {
+                return try reply("revision-mismatch")
+            }
+            track = selectionTrack?(value.trackUri) ?? cached.track
+            document = local
+        } else {
+            guard let entry = value.entry, entry.trackUri == value.trackUri,
+                  entry.appleMusic == nil, entry.lines.allSatisfy({ $0.presentation == nil }),
+                  try cache.save(entry) != .rejected,
+                  let cached = cache.localPersistenceDocument(from: entry) else { return try reply("invalid-selection") }
+            track = selectionTrack?(value.trackUri) ?? cached.track
+            document = cached.document
+        }
+        if value.sourcePolicy == "auto", let existing = try storage.loadLyrics(for: track),
+           existing.selectionState.isManualSelection,
+           (LyricsStorageFamily(document: existing) != family || !document.selectionState.isManualSelection) { return try reply("manual-preserved") }
+        if !document.selectionState.isManualSelection { document.selectionState = .plugin }
+        _ = try storage.saveCandidate(document, for: track, preservingManualSelection: true)
+        try storage.select(family, for: track)
+        selectionRevisions[value.clientSessionId] = value.selectionRevision
+        if selectionRevisions.count > 80 { selectionRevisions = [value.clientSessionId: value.selectionRevision] }
+        onSelection?(document, track)
+        return try reply("selected")
     }
 
     private let service: any LyricsSearchService
@@ -104,6 +164,7 @@ final class AppleMusicPrefetchCoordinator {
                 return try response("ready", document: local)
             }
         }
+        if request.cachedOnly == true { return try response("not-found") }
         guard request.referenceKnown == true else { return try response("reference-required") }
         var identity = request
         identity.generation = 0
@@ -111,6 +172,7 @@ final class AppleMusicPrefetchCoordinator {
         identity.role = nil
         identity.interestRevision = nil
         identity.knownRevision = nil
+        identity.cachedOnly = nil
         identity.sourcePolicy = "apple-music"
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
@@ -139,10 +201,14 @@ final class AppleMusicPrefetchCoordinator {
                     })
                 } else { candidates = try await service.search(query) }
                 var matched: LyricsDocument?
+                var bestScore: [Int] = []
                 for candidate in candidates {
                     if await FullscapeLyricsMatcher.shared.matches(candidate.document, track: track, reference: request.reference, relaxed: request.relaxed) {
-                        matched = candidate.document
-                        break
+                        let score = await FullscapeLyricsMatcher.shared.preferenceScore(candidate.document)
+                        if matched == nil || bestScore.lexicographicallyPrecedes(score) {
+                            matched = candidate.document
+                            bestScore = score
+                        }
                     }
                 }
                 if var document = matched {

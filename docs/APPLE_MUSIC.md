@@ -52,8 +52,8 @@ A root-level Apple Music file from an earlier build is still readable. On the
 next write it is copied to the Apple Music directory before the root file is
 removed; existing Apple Music files are preserved on a migration name collision.
 The reset action clears both variants and their selection. The Fullscape local
-reader explicitly reads the ordinary variant while Apple Music export remains
-disabled, even when the desktop is using Apple Music.
+v1 reader explicitly reads the ordinary variant. Rich Apple Music documents are
+only exported through the negotiated v2 route.
 
 ## Fullscape v2 integration
 
@@ -114,3 +114,21 @@ read-only local Coral Sea cache, including its 68 lines and 14 right-aligned lin
 They also verify overlap and compare against the locally cached Spotify baseline.
 The source fixture and rendered lyrics are never committed. These checks validate
 cached real data; they do not force a second download of an already cached song.
+
+### Automatic selection and desktop synchronization
+
+Auto uses the same preference module in Chromium and JavaScriptCore. Chinese
+lyrics prefer Apple Music. Otherwise the order is rich Apple Music (right-aligned
+voices, background/small text, ruby, or overlapping intervals), syllable lyrics
+with Chinese translation, syllable lyrics, line lyrics with Chinese translation,
+line lyrics, then untimed text. Explicit manual selections and source settings
+remain authoritative. Richness is detected from content, not just the existence
+of a TTML payload.
+
+`POST /lyrics-v2/selection` confirms the document FullScape actually displays.
+A per-client revision rejects out-of-order selections, document revisions protect
+against stale Apple candidates, and the app accepts only its current Spotify
+track. Confirmation selects the independent LRCS family and immediately updates
+the desktop. Prefetch never selects a family. Ordinary cache writes cannot
+replace the committed Apple family. Cache-only refresh detects manual source
+changes without starting additional provider requests.

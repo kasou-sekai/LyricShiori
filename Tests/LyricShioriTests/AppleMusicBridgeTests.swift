@@ -30,6 +30,83 @@ final class AppleMusicBridgeTests: XCTestCase {
     }
     private func json(_ data: Data) throws -> [String: Any] { try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any]) }
 
+    func testConfirmedDisplaySelectionSyncsBothFamiliesWithoutPrefetchOrStaleTakeover() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = LocalLyricsStorage(baseDirectory: directory)
+        let cache = SharedLyricsCache(url: directory.appendingPathComponent("cache.json"))
+        let service = try Service()
+        let track = TrackIdentity(id: "spotify:track:bridge", title: "Example", artist: "Artist", duration: 180)
+        var ordinary = try LyricsParser().parse("[00:10.00]Hello ocean")
+        ordinary.metadata.title = track.title
+        ordinary.metadata.artist = track.artist
+        ordinary.selectionState = .plugin
+        _ = try storage.save(ordinary, for: track)
+        service.document.selectionState = .automaticSearch(cachedWithoutPlugin: true)
+        _ = try storage.saveCandidate(service.document, for: track)
+        let broker = AppleMusicPrefetchCoordinator(service: service, cache: cache, storage: { storage })
+        var selectedFamilies: [LyricsStorageFamily] = []
+        broker.onSelection = { document, _ in selectedFamilies.append(LyricsStorageFamily(document: document)) }
+        let prepared = try json(await broker.handle(body(), activate: false))
+        XCTAssertEqual(prepared["status"] as? String, "ready")
+        XCTAssertEqual(LyricsStorageFamily(document: try XCTUnwrap(storage.loadLyrics(for: track))), .standard)
+        XCTAssertTrue(selectedFamilies.isEmpty)
+        func confirmation(_ entry: SharedLyricsCache.Entry, revision: Int) throws -> Data {
+            var object: [String: Any] = ["trackUri":track.id,"sourceFamily":entry.sourceFamily ?? "standard",
+                "entry":try JSONSerialization.jsonObject(with: JSONEncoder().encode(entry)),
+                "clientSessionId":"fixture","selectionRevision":revision,"sourcePolicy":"auto"]
+            object["documentRevision"] = entry.documentRevision
+            return try JSONSerialization.data(withJSONObject: object)
+        }
+        let rich = try cache.richBridgeEntry(service.document, for: track)
+        let selected = try json(broker.confirmSelection(confirmation(rich, revision: 1)))
+        XCTAssertEqual(selected["status"] as? String, "selected")
+        XCTAssertEqual(selectedFamilies, [.appleMusic])
+        let local = try XCTUnwrap(storage.loadLyrics(for: track))
+        XCTAssertEqual(LyricsStorageFamily(document: local), .appleMusic)
+        XCTAssertEqual(local.selectionState.cacheSource, .plugin)
+        // Ordinary provider cache updates cannot change the committed source.
+        _ = try storage.saveCandidate(ordinary, for: track)
+        XCTAssertEqual(LyricsStorageFamily(document: try XCTUnwrap(storage.loadLyrics(for: track))), .appleMusic)
+        let standard = try cache.richBridgeEntry(ordinary, for: track)
+        _ = try cache.save(standard)
+        XCTAssertEqual(try json(broker.confirmSelection(confirmation(standard, revision: 2)))["status"] as? String, "selected")
+        XCTAssertEqual(selectedFamilies, [.appleMusic, .standard])
+        XCTAssertEqual(try json(broker.confirmSelection(confirmation(rich, revision: 1)))["status"] as? String, "stale")
+        XCTAssertEqual(LyricsStorageFamily(document: try XCTUnwrap(storage.loadLyrics(for: track))), .standard)
+        ordinary.selectionState = .manual()
+        _ = try storage.save(ordinary, for: track)
+        let newestRich = try cache.richBridgeEntry(try XCTUnwrap(storage.loadLyrics(for: track, family: .appleMusic)), for: track)
+        XCTAssertEqual(try json(broker.confirmSelection(confirmation(newestRich, revision: 3)))["status"] as? String, "manual-preserved")
+        broker.canSelectTrack = { _ in false }
+        XCTAssertEqual(try json(broker.confirmSelection(confirmation(standard, revision: 4)))["status"] as? String, "stale")
+        XCTAssertEqual(selectedFamilies.count, 2)
+    }
+
+    func testSharedPreferenceRanksChineseRichTranslationAndSyllablesInOrder() async throws {
+        let service = try Service()
+        var apple = service.document
+        apple.metadata.languageCode = "en"
+        var ordinary = apple
+        ordinary.appleMusic = nil
+        ordinary.lines[0].presentation = nil
+        var translatedWords = ordinary
+        translatedWords.lines[0].translations["default"] = "你好海洋"
+        var translatedPlain = translatedWords
+        translatedPlain.lines[0].wordTimings = []
+        var plain = ordinary
+        plain.lines[0].wordTimings = []
+        var rich = apple
+        rich.lines[0].presentation?.alignment = .right
+        var chinese = apple
+        chinese.metadata.languageCode = "zh-Hans"
+        chinese.lines[0].content = "你好海洋"
+        let variants = [chinese, rich, translatedWords, ordinary, translatedPlain, plain]
+        var tiers: [Int] = []
+        for variant in variants { tiers.append(await FullscapeLyricsMatcher.shared.preferenceScore(variant).first ?? -1) }
+        XCTAssertEqual(tiers, [60,50,40,30,20,10])
+    }
+
     func testSharedMatcherUsesExistingRelaxedBoundaries() async throws {
         let service = try Service()
         let track = TrackIdentity(id: "spotify:track:bridge", title: "Localized", artist: "Localized", duration: 180)
@@ -50,6 +127,11 @@ final class AppleMusicBridgeTests: XCTestCase {
         let service = try Service()
         let cache = SharedLyricsCache(url: directory.appendingPathComponent("cache.json"))
         let broker = AppleMusicPrefetchCoordinator(service: service, cache: cache, storage: {storage})
+        var cachedOnly = try json(body())
+        cachedOnly["cachedOnly"] = true
+        let cacheMiss = try json(await broker.handle(JSONSerialization.data(withJSONObject: cachedOnly), activate: true))
+        XCTAssertEqual(cacheMiss["status"] as? String, "not-found")
+        XCTAssertEqual(service.count, 0)
         let missing = try json(await broker.handle(body(known: false), activate: false))
         XCTAssertEqual(missing["status"] as? String, "reference-required")
         XCTAssertEqual(service.count, 0)
@@ -116,6 +198,7 @@ final class AppleMusicBridgeTests: XCTestCase {
         let broker = AppleMusicPrefetchCoordinator(service: try Service(), cache: cache, storage: {storage})
         let server = SharedLyricsCacheServer(cache: cache, localStorage: storage, port: .any)
         server.onRichRequest = { data, activate in try await broker.handle(data, activate: activate) }
+        server.onRichSelection = { data in try await broker.confirmSelection(data) }
         server.start()
         defer { server.stop() }
         for _ in 0..<100 where server.listeningPort == nil { try await Task.sleep(for: .milliseconds(10)) }
@@ -136,6 +219,12 @@ final class AppleMusicBridgeTests: XCTestCase {
         request.httpBody = Data("{}".utf8)
         let (_, bad) = try await URLSession.shared.data(for: request)
         XCTAssertEqual((bad as? HTTPURLResponse)?.statusCode, 400)
+        request.url = URL(string: base + "/lyrics-v2/selection")!
+        let (_, invalidSelection) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((invalidSelection as? HTTPURLResponse)?.statusCode, 400)
+        request.setValue(nil, forHTTPHeaderField: "X-LyricShiori-Token")
+        let (_, unauthedSelection) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((unauthedSelection as? HTTPURLResponse)?.statusCode, 401)
     }
 }
 

@@ -445,7 +445,9 @@ final class SharedLyricsCache: @unchecked Sendable {
         // The source TTML remains lossless in LRCS. Avoid duplicating it over
         // localhost or consuming the browser's ordinary localStorage quota.
         entry.appleMusic = nil
-        let bytes = Data(try LyricsCacheFile.encode(document: document, track: track).utf8)
+        // Revision describes the document, independent of Spotify's localized
+        // title/duration used to locate it or the catalog title in entry metadata.
+        let bytes = Data(try LyricsCacheFile.encode(document: document, track: nil).utf8)
         entry.documentRevision = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
         return entry
     }
@@ -488,7 +490,7 @@ final class SharedLyricsCache: @unchecked Sendable {
             return Line(
                 time: line.position * 1000,
                 text: content,
-                translation: line.translations["default"],
+                translation: line.translations.sorted { $0.key < $1.key }.first(where: { $0.key.hasPrefix("zh") })?.value ?? line.translations["default"],
                 romanization: line.translations["romanization"],
                 furigana: line.translations["furigana"],
                 words: words.isEmpty ? nil : words.map {
@@ -540,20 +542,16 @@ final class SharedLyricsCache: @unchecked Sendable {
         let meaningful = lines.count(where: { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
         let timed = lines.count(where: { $0.time != nil })
         let karaoke = lines.count(where: { !($0.words ?? []).isEmpty })
-        let furigana = lines.count(where: { !($0.furigana?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) })
-        let translation = lines.count(where: { !($0.translation?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) })
-        let romanization = lines.count(where: { !($0.romanization?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) })
-        return [
-            karaoke > 0 ? 1 : 0,
-            furigana > 0 ? 1 : 0,
-            translation > 0 ? 1 : 0,
-            karaoke,
-            furigana,
-            translation,
-            romanization,
-            timed,
-            meaningful,
-        ]
+        let translation = lines.count(where: { line in
+            guard let text = line.translation, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+            let scalars = text.unicodeScalars
+            let han = scalars.count(where: { (0x3400...0x9FFF).contains($0.value) || (0x20000...0x323AF).contains($0.value) })
+            let otherCJK = scalars.contains(where: { (0x3040...0x30FF).contains($0.value) || (0xAC00...0xD7AF).contains($0.value) })
+            let latin = scalars.count(where: { (0x41...0x7A).contains($0.value) })
+            return han > 0 && !otherCJK && han * 5 >= latin
+        })
+        let tier = karaoke > 0 && translation > 0 ? 40 : karaoke > 0 ? 30 : translation > 0 ? 20 : timed > 0 ? 10 : meaningful > 0 ? 5 : 0
+        return [tier, translation, karaoke, timed, meaningful]
     }
 
     private func localPersistenceSourceScore(_ entry: Entry) -> Int {
@@ -835,6 +833,7 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
     private let allowedOrigins: Set<String> = [
         "https://xpui.app.spotify.com",
     ]
+    var onRichSelection: (@Sendable (Data) async throws -> Data)?
     var onRichRelease: (@Sendable (Data) async throws -> Void)?
     var onRichRequest: (@Sendable (Data, Bool) async throws -> Data)?
     var onEntrySaved: ((SharedLyricsCache.Entry) -> Void)?
@@ -1088,6 +1087,12 @@ final class SharedLyricsCacheServer: @unchecked Sendable {
             return httpResponse(status: "413 Payload Too Large", origin: origin)
         }
         let body = Data(data[headerRange.upperBound..<(headerRange.upperBound + declaredLength)])
+
+        if method == "POST", components.path == "/lyrics-v2/selection" {
+            guard let onRichSelection else { return httpResponse(status: "404 Not Found", origin: origin) }
+            let result = try await onRichSelection(body)
+            return httpResponse(status: "200 OK", body: result, contentType: "application/json", origin: origin)
+        }
 
         if method == "POST", components.path == "/lyrics-v2/release" {
             guard let onRichRelease else { return httpResponse(status: "404 Not Found", origin: origin) }

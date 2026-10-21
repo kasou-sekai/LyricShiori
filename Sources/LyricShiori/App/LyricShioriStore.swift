@@ -140,6 +140,13 @@ final class LyricShioriStore {
             self?.localLyricsStorage() ?? LocalLyricsStorage()
         })
         self.appleMusicPrefetch = prefetch
+        prefetch.canSelectTrack = { [weak self] uri in self?.playback.track?.id == uri }
+        prefetch.selectionTrack = { [weak self] uri in self?.playback.track.flatMap { $0.id == uri ? $0 : nil } }
+        prefetch.onSelection = { [weak self] document, track in
+            guard let self, self.settings.connectFullscape, self.playback.track?.id == track.id else { return }
+            self.useCachedLyrics(document, for: track, persistLocal: false, syncShared: false)
+        }
+        self.sharedLyricsCacheServer.onRichSelection = { data in try await prefetch.confirmSelection(data) }
         self.sharedLyricsCacheServer.onRichRelease = { data in try await prefetch.release(data) }
         self.sharedLyricsCacheServer.onRichRequest = { data, activate in
             try await prefetch.handle(data, activate: activate)
@@ -455,6 +462,13 @@ final class LyricShioriStore {
         }
 
         guard !Task.isCancelled, isCurrentSearch(effectiveSearchID, requiredTrackSignature: requiredTrackSignature) else { return }
+        var scores: [UUID: [Int]] = [:]
+        for result in collected { scores[result.id] = await FullscapeLyricsMatcher.shared.preferenceScore(result.document) }
+        guard !Task.isCancelled, isCurrentSearch(effectiveSearchID, requiredTrackSignature: requiredTrackSignature) else { return }
+        collected.sort { left, right in
+            let a = scores[left.id] ?? [0], b = scores[right.id] ?? [0]
+            return a == b ? preciseMatcher.sort(left, right) : b.lexicographicallyPrecedes(a)
+        }
         searchResults = collected
         if let track = playback.track {
             let trackRequest = ShioriLyricsSearchRequest(title: track.title, artist: track.artist,
@@ -1124,6 +1138,9 @@ final class LyricShioriStore {
             if existing?.selectionState.cacheSource != .manual
                 || cached.document.selectionState.cacheSource == .manual {
                 persistLocalLyrics(cached.document, for: cached.track)
+                if cached.document.selectionState.isManualSelection {
+                    try? localLyricsStorage().select(LyricsStorageFamily(document: cached.document), for: cached.track)
+                }
             }
         }
         guard settings.connectFullscape,
