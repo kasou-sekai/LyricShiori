@@ -107,6 +107,46 @@ final class AppleMusicBridgeTests: XCTestCase {
         XCTAssertEqual(tiers, [60,50,40,30,20,10])
     }
 
+    func testManualOffsetRefreshAcrossLocalizedNamesRejectsOldConfirmation() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = LocalLyricsStorage(baseDirectory: directory)
+        let cache = SharedLyricsCache(url: directory.appendingPathComponent("cache.json"))
+        let service = try Service()
+        let native = TrackIdentity(id: "spotify:track:bridge", title: "Example", artist: "Artist", duration: 180)
+        let localized = TrackIdentity(id: native.id, title: "Localized", artist: "Localized artist", duration: 180)
+        var document = service.document
+        document.selectionState = .automaticSearch(cachedWithoutPlugin: true)
+        _ = try storage.saveCandidate(document, for: native)
+        _ = try storage.saveCandidate(document, for: localized)
+        let broker = AppleMusicPrefetchCoordinator(service: service, cache: cache, storage: { storage })
+        var request = try json(body())
+        request["title"] = localized.title
+        request["artists"] = localized.artist
+        let first = try json(await broker.handle(JSONSerialization.data(withJSONObject: request), activate: true))
+        let originalEntry = try XCTUnwrap(first["entry"] as? [String: Any])
+        request["knownRevision"] = originalEntry["documentRevision"]
+        for offset in [1250, -500, 0] {
+            document.offsetMilliseconds = offset
+            document.selectionState = .manual()
+            _ = try storage.save(document, for: native)
+            let reply = try json(await broker.handle(JSONSerialization.data(withJSONObject: request), activate: true))
+            XCTAssertEqual(reply["status"] as? String, "ready")
+            let entry = try XCTUnwrap(reply["entry"] as? [String: Any])
+            XCTAssertEqual(entry["offsetMilliseconds"] as? Int, offset)
+            XCTAssertEqual(entry["timingOffsetApplied"] as? Bool, false)
+            let lines = try XCTUnwrap(entry["lines"] as? [[String: Any]])
+            XCTAssertEqual(lines[0]["time"] as? Double, 10000)
+            request["knownRevision"] = entry["documentRevision"]
+            let unchanged = try json(await broker.handle(JSONSerialization.data(withJSONObject: request), activate: true))
+            XCTAssertEqual(unchanged["status"] as? String, "unchanged")
+        }
+        let stale: [String: Any] = ["trackUri":native.id,"sourceFamily":"apple-music","entry":originalEntry,
+            "documentRevision":originalEntry["documentRevision"]!,"clientSessionId":"offset-test","selectionRevision":1,"sourcePolicy":"auto"]
+        XCTAssertEqual(try json(broker.confirmSelection(JSONSerialization.data(withJSONObject: stale)))["status"] as? String, "revision-mismatch")
+        XCTAssertEqual(service.count, 0)
+    }
+
     func testSharedMatcherUsesExistingRelaxedBoundaries() async throws {
         let service = try Service()
         let track = TrackIdentity(id: "spotify:track:bridge", title: "Localized", artist: "Localized", duration: 180)

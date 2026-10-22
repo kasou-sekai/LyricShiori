@@ -229,6 +229,26 @@ final class LyricsSourceStorageTests: XCTestCase {
         try LyricsParser().parse("[00:01.00]standard", sourceName: "QQMusic")
     }
 
+    func testLocalizedFilenameCannotHideManualOffsetForSameTrackAndFamily() throws {
+        try withStorage { storage, native in
+            var localized = native
+            localized.title = "Localized title"
+            localized.artist = "Localized artist"
+            for family in LyricsStorageFamily.allCases {
+                var automatic = try family == .appleMusic ? appleDocument() : standardDocument()
+                automatic.selectionState = .automaticSearch(cachedWithoutPlugin: true)
+                _ = try storage.saveCandidate(automatic, for: localized)
+                var adjusted = automatic
+                adjusted.offsetMilliseconds = 1250
+                adjusted.selectionState = .manual()
+                _ = try storage.save(adjusted, for: native)
+                let read = try XCTUnwrap(storage.loadLyrics(for: localized, family: family))
+                XCTAssertEqual(read.offsetMilliseconds, 1250)
+                XCTAssertEqual(read.selectionState.cacheSource, .manual)
+            }
+        }
+    }
+
     func testTwoSourcesCoexistAndSelectedSourceSurvivesRestart() throws {
         try withStorage { storage, track in
             let standard = try standardDocument()

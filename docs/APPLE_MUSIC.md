@@ -139,3 +139,9 @@ authored timed spans can supply word clocks; old LRCS and browser caches are
 normalized on read without changing source timestamps or manual offsets. A
 same-voice tail overlap in line-only data does not count as a rich duet, and
 sub-millisecond rounding overlap is ignored by automatic source ranking.
+
+Offset edits are resolved by full Spotify track ID and source family, across all
+localized filename aliases. A manual variant takes priority over automatic files;
+when multiple manual aliases exist, the most recently edited one wins. Rendering
+applies the offset once to sentence, syllable and background clocks, including
+negative timestamps needed to advance the beginning of a song.

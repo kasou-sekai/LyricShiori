@@ -251,12 +251,22 @@ struct LocalLyricsStorage: LyricsStorageService, Sendable {
         // Earlier builds stored Apple Music in the root directory. Read it until
         // the next write migrates it without discarding the other source slot.
         if family == .appleMusic { candidates += candidateURLs(for: track, in: .standard) }
+        // Spotify's native and web APIs can localize title/artist differently.
+        // Filename preference must not hide the manual offset in another alias.
+        var best: (document: LyricsDocument, modified: Date)?
         for url in candidates where FileManager.default.fileExists(atPath: url.path) {
-            if let document = try loadDocument(at: url, for: track), LyricsStorageFamily(document: document) == family {
-                return document
+            guard let document = try loadDocument(at: url, for: track), LyricsStorageFamily(document: document) == family else { continue }
+            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            if let current = best {
+                let manual = document.selectionState.isManualSelection
+                let currentManual = current.document.selectionState.isManualSelection
+                if manual != currentManual {
+                    if !manual { continue }
+                } else if modified <= current.modified { continue }
             }
+            best = (document, modified)
         }
-        return nil
+        return best?.document
     }
 
     func select(_ family: LyricsStorageFamily, for track: TrackIdentity) throws {
