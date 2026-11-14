@@ -348,9 +348,11 @@ final class SharedLyricsCache: @unchecked Sendable {
     func encodedBestPreferredEntry(_ document: LyricsDocument, for track: TrackIdentity, kind: Kind) throws -> Data? {
         let localEntry = entry(from: document, for: track, kind: kind)
         let cachedEntry = try entry(trackUri: track.id, kind: kind)
-        let candidates = [localEntry, cachedEntry]
-            .compactMap { $0 }
-            .filter { isSharedBridgePreferred($0) }
+        var candidates = [cachedEntry].compactMap { $0 }.filter { isSharedBridgePreferred($0) }
+        if !localEntry.lines.isEmpty, localEntry.appleMusic == nil,
+           !localEntry.lines.contains(where: { $0.presentation != nil }) {
+            candidates.append(localEntry)
+        }
         if let hidden = candidates.first(where: { $0.hidden == true }) {
             return try encoder.encode(hidden)
         }

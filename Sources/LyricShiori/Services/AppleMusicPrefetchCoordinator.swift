@@ -158,11 +158,9 @@ final class AppleMusicPrefetchCoordinator {
             return try response("standard")
         }
         if let local = try storage.loadLyrics(for: track, family: .appleMusic) {
-            if local.selectionState.isManualSelection { return try response("ready", document: local) }
-            if request.referenceKnown == true,
-               await FullscapeLyricsMatcher.shared.matches(local, track: track, reference: request.reference, relaxed: request.relaxed) {
-                return try response("ready", document: local)
-            }
+            // LRCS storage resolves the exact Spotify track ID; the matcher
+            // is needed only when importing a new catalog candidate.
+            return try response("ready", document: local)
         }
         if request.cachedOnly == true { return try response("not-found") }
         guard request.referenceKnown == true else { return try response("reference-required") }
