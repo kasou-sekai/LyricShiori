@@ -612,6 +612,26 @@ final class LyricsSafetyTests: XCTestCase {
         XCTAssertTrue(tombstone.lines.isEmpty)
     }
 
+    func testBridgeRanksOrdinaryLyricsByQualityAcrossCacheKinds() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = SharedLyricsCache(url: directory.appendingPathComponent("cache.json"))
+        let track = makeTrack(id: "spotify:track:bridge-quality")
+        let now = Int64((Date().timeIntervalSince1970 * 1_000).rounded())
+        let plain = makeEntry(trackURI: track.id, cachedAt: now, source: .plugin)
+        XCTAssertSaveResult(try cache.save(plain), .saved)
+        var translated = plain
+        translated.kind = .enhancedRelaxed
+        translated.lines[0].translation = "中文翻譯"
+        translated.lines[0].words = [.init(time: 1000, duration: 500, text: translated.lines[0].text)]
+        XCTAssertSaveResult(try cache.save(translated), .saved)
+        let data = try XCTUnwrap(cache.encodedPreferredEntry(trackUri: track.id, kind: .enhanced))
+        let preferred = try JSONDecoder().decode(SharedLyricsCache.Entry.self, from: data)
+        XCTAssertEqual(preferred.kind, .enhanced)
+        XCTAssertEqual(preferred.lines.first?.translation, "中文翻譯")
+        XCTAssertEqual(preferred.lines.first?.words?.count, 1)
+    }
+
     func testPluginResultReplacesLowerPriorityAppSearchCache() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

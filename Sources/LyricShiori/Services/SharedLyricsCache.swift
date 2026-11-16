@@ -336,8 +336,8 @@ final class SharedLyricsCache: @unchecked Sendable {
 
     func encodedPreferredEntry(trackUri: String, kind: Kind) throws -> Data? {
         let resetAt = try manualResetAt(for: trackUri)
-        if var entry = try entry(trackUri: trackUri, kind: kind),
-           isSharedBridgePreferred(entry) {
+        if var entry = try bestBridgeEntry(trackUri: trackUri, kind: kind) {
+            entry.kind = kind
             entry.manualResetAt = resetAt
             return try encoder.encode(entry)
         }
@@ -347,18 +347,31 @@ final class SharedLyricsCache: @unchecked Sendable {
 
     func encodedBestPreferredEntry(_ document: LyricsDocument, for track: TrackIdentity, kind: Kind) throws -> Data? {
         let localEntry = entry(from: document, for: track, kind: kind)
-        let cachedEntry = try entry(trackUri: track.id, kind: kind)
-        var candidates = [cachedEntry].compactMap { $0 }.filter { isSharedBridgePreferred($0) }
-        if !localEntry.lines.isEmpty, localEntry.appleMusic == nil,
-           !localEntry.lines.contains(where: { $0.presentation != nil }) {
-            candidates.append(localEntry)
-        }
-        if let hidden = candidates.first(where: { $0.hidden == true }) {
-            return try encoder.encode(hidden)
-        }
-        guard var best = bestLocalPersistenceEntry(from: candidates) else { return nil }
+        guard var best = try bestBridgeEntry(trackUri: track.id, kind: kind, local: localEntry) else { return nil }
+        best.kind = kind
         best.manualResetAt = try manualResetAt(for: track.id)
         return try encoder.encode(best)
+    }
+
+    private func bestBridgeEntry(trackUri: String, kind: Kind, local: Entry? = nil) throws -> Entry? {
+        let kinds: [Kind] = kind == .spotify ? [.spotify] : preferredKinds
+        var candidates = try kinds.compactMap { try entry(trackUri: trackUri, kind: $0) }
+            .filter { isSharedBridgePreferred($0) }
+        if let local, !local.lines.isEmpty, local.appleMusic == nil,
+           !local.lines.contains(where: { $0.presentation != nil }) {
+            candidates.append(local)
+        }
+        if let hidden = candidates.first(where: { $0.hidden == true }) { return hidden }
+        return candidates.filter { !$0.lines.isEmpty }.max { lhs, rhs in
+            let leftManual = effectiveCacheSource(for: lhs) == .manual
+            let rightManual = effectiveCacheSource(for: rhs) == .manual
+            if leftManual != rightManual { return rightManual }
+            if !leftManual {
+                let quality = compareLyricsQuality(lhs.lines, rhs.lines)
+                if quality != 0 { return quality < 0 }
+            }
+            return compareLocalPersistencePriority(lhs, rhs) < 0
+        }
     }
 
     func encodedEntry(_ document: LyricsDocument, for track: TrackIdentity, kind: Kind) throws -> Data? {
