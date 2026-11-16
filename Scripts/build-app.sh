@@ -7,7 +7,7 @@ DIST_DIR="$ROOT_DIR/dist"
 APP_NAME="LyricShiori"
 BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-release}"
 PREBUILT_BIN_DIR="${PREBUILT_BIN_DIR:-}"
-DEVELOPER_ROOT="${DEVELOPER_DIR:-/Volumes/Data/Applications/Xcode-beta.app/Contents/Developer}"
+DEVELOPER_ROOT="${DEVELOPER_DIR:-$(xcode-select -p)}"
 SWIFT_EXEC="$DEVELOPER_ROOT/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
 SDK_PATH="$(DEVELOPER_DIR="$DEVELOPER_ROOT" xcrun --sdk macosx --show-sdk-path)"
 SDK_VERSION="$(DEVELOPER_DIR="$DEVELOPER_ROOT" xcrun --sdk macosx --show-sdk-version)"
@@ -15,6 +15,7 @@ APP_PATH="$DIST_DIR/$APP_NAME.app"
 CONTENTS_DIR="$APP_PATH/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
+FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 INFO_PLIST="$ROOT_DIR/Sources/LyricShiori/Supporting/Info.plist"
 LOCALIZATION_CATALOG="$ROOT_DIR/Sources/LyricShiori/Resources/Localizable.xcstrings"
 XCSTRINGS_TOOL="$DEVELOPER_ROOT/usr/bin/xcstringstool"
@@ -26,6 +27,7 @@ mkdir -p "$BUILD_DIR/clang-module-cache" "$DIST_DIR"
 export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$BUILD_DIR/clang-module-cache}"
 export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-$BUILD_DIR/clang-module-cache}"
 export PATH="$DEVELOPER_ROOT/usr/bin:$DEVELOPER_ROOT/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
+export DEVELOPER_DIR="$DEVELOPER_ROOT"
 
 if [[ "$BUILD_CONFIGURATION" != "debug" && "$BUILD_CONFIGURATION" != "release" ]]; then
     echo "BUILD_CONFIGURATION must be debug or release." >&2
@@ -112,13 +114,35 @@ for language in en zh-Hans zh-Hant ja; do
     fi
 done
 printf "APPL????" > "$CONTENTS_DIR/PkgInfo"
-chmod +x "$MACOS_DIR/$APP_NAME"
+EXECUTABLE="$MACOS_DIR/$APP_NAME"
+chmod +x "$EXECUTABLE"
 
+# The toolchain can link Swift back-deployment libraries that older macOS
+# releases do not ship. Copy them before removing the Xcode search paths.
+xcrun swift-stdlib-tool --copy --platform macosx --scan-executable "$EXECUTABLE" \
+    --destination "$FRAMEWORKS_DIR"
+while IFS= read -r runtime_path; do
+    if [[ "$runtime_path" == "$DEVELOPER_ROOT/"* ]]; then
+        xcrun install_name_tool -delete_rpath "$runtime_path" "$EXECUTABLE"
+    fi
+done < <(xcrun otool -l "$EXECUTABLE" | awk '
+    $1 == "cmd" { is_rpath = ($2 == "LC_RPATH") }
+    is_rpath && $1 == "path" { sub(/^[[:space:]]*path /, ""); sub(/ \(offset [0-9]+\)$/, ""); print }
+')
+
+if [[ -d "$FRAMEWORKS_DIR" ]]; then
+    xcrun install_name_tool -add_rpath '@executable_path/../Frameworks' "$EXECUTABLE"
+fi
 if command -v codesign >/dev/null 2>&1; then
+    for library in "$FRAMEWORKS_DIR"/*.dylib; do
+        if [[ -f "$library" ]]; then
+            codesign --force --sign - "$library" >/dev/null
+        fi
+    done
     codesign --force --sign - "$APP_PATH" >/dev/null
 fi
 
-LINKED_SDK="$(vtool -show-build "$MACOS_DIR/$APP_NAME" | awk '/sdk / { print $2; exit }')"
+LINKED_SDK="$(vtool -show-build "$EXECUTABLE" | awk '/sdk / { print $2; exit }')"
 if [[ "$LINKED_SDK" != "$SDK_VERSION" ]]; then
     echo "Expected linked SDK $SDK_VERSION, got $LINKED_SDK." >&2
     exit 3

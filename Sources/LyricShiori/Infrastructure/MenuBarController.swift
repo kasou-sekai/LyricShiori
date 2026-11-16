@@ -438,10 +438,7 @@ private struct MenuBarLyric {
 
 private enum MenuBarLogo {
     static let image: NSImage? = {
-        // Packaged apps keep resources in Contents/Resources. The SwiftPM
-        // module bundle remains the fallback for command-line/dev builds.
-        let url = Bundle.main.url(forResource: "emoji-bookmark-template", withExtension: "png")
-            ?? Bundle.module.url(forResource: "emoji-bookmark-template", withExtension: "png")
+        let url = Bundle.lyricShioriResources.url(forResource: "emoji-bookmark-template", withExtension: "png")
         guard let url,
               let image = NSImage(contentsOf: url) else {
             return NSImage(systemSymbolName: "bookmark.fill", accessibilityDescription: "LyricShiori")

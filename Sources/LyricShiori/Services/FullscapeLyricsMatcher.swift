@@ -5,14 +5,14 @@ import JavaScriptCore
 actor FullscapeLyricsMatcher {
     static let shared = FullscapeLyricsMatcher()
     nonisolated static let version: String = {
-        guard let url = Bundle.module.url(forResource: "fullscape-matcher-version", withExtension: "txt") else { return "unavailable" }
+        guard let url = Bundle.lyricShioriResources.url(forResource: "fullscape-matcher-version", withExtension: "txt") else { return "unavailable" }
         return (try? String(contentsOf: url, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "unavailable"
     }()
     private var context: JSContext?
 
     private func prepareContext() -> Bool {
         if context == nil {
-            guard let url = Bundle.module.url(forResource: "fullscape-matcher", withExtension: "js"),
+            guard let url = Bundle.lyricShioriResources.url(forResource: "fullscape-matcher", withExtension: "js"),
                   let script = try? String(contentsOf: url, encoding: .utf8), let context = JSContext() else { return false }
             context.evaluateScript(script)
             guard context.exception == nil else { return false }
